@@ -1,0 +1,8 @@
+{
+  "name": "cc-harness",
+  "version": "0.1.0",
+  "description": "Config-driven guardrails for Claude Code: test guard, commit guard, quality gate, destructive-git guard, stop gate, session preflight, and a project bootstrap.",
+  "author": { "name": "Malek Olabi" },
+  "license": "MIT",
+  "keywords": ["hooks", "guardrails", "tdd", "conventional-commits", "quality-gate"]
+}

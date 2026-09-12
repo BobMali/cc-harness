@@ -1,0 +1,35 @@
+{
+  "description": "cc-harness guards. Every event runs the same CLI; it reads .claude/harness.json and stays silent when that file is absent.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Write|Edit|MultiEdit",
+        "hooks": [
+          { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/bin/harness.mjs\" hook PreToolUse", "timeout": 30 }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/bin/harness.mjs\" hook PostToolUse", "timeout": 600 }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/bin/harness.mjs\" hook Stop", "timeout": 600 }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/bin/harness.mjs\" hook SessionStart", "timeout": 30 }
+        ]
+      }
+    ]
+  }
+}
