@@ -1355,7 +1355,7 @@ import assert from 'node:assert/strict';
 import { parseRegexFile, extractCommitMessage, checkMessage } from '../plugins/cc-harness/lib/commit-rules.mjs';
 import { splitSegments, tokenize } from '../plugins/cc-harness/lib/shell.mjs';
 
-const FILE = `^(feat|fix|docs)(\\((cli|guards)\\))?!?: [a-z].{0,64}[^.]$
+const FILE = `^(feat|fix|docs)(\\((cli|guards)\\))?!?: [a-z](.{0,64}[^.])?$
 # types: feat fix docs
 # scopes: cli guards
 `;
@@ -1484,7 +1484,7 @@ import { evaluate } from '../plugins/cc-harness/lib/guards/commit.mjs';
 import { DEFAULTS, mergeConfig } from '../plugins/cc-harness/lib/config.mjs';
 import { makeProject } from './helpers/project.mjs';
 
-const REGEX = '^(feat|fix|docs)(\\((cli|guards)\\))?!?: [a-z].{0,64}[^.]$\n# types: feat fix docs\n# scopes: cli guards\n';
+const REGEX = '^(feat|fix|docs)(\\((cli|guards)\\))?!?: [a-z](.{0,64}[^.])?$\n# types: feat fix docs\n# scopes: cli guards\n';
 const files = { 'githooks/conventional-regex.txt': REGEX, 'msg.txt': 'feat: from file\n' };
 
 function run(p, command, over = {}) {
@@ -1628,7 +1628,7 @@ import { fileURLToPath } from 'node:url';
 import { makeProject } from './helpers/project.mjs';
 
 const HOOK = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'plugins', 'cc-harness', 'templates', 'githooks', 'commit-msg');
-const REGEX = '^(feat|fix)(\\((cli)\\))?!?: [a-z].{0,64}[^.]$\n# types: feat fix\n# scopes: cli\n';
+const REGEX = '^(feat|fix)(\\((cli)\\))?!?: [a-z](.{0,64}[^.])?$\n# types: feat fix\n# scopes: cli\n';
 
 function runHook(p, message, env = {}) {
   const f = p.write('.git/COMMIT_EDITMSG', message);
@@ -2122,7 +2122,7 @@ import { diagnose, formatStatus, ruleStamp, RULE_NAMES } from '../plugins/cc-har
 import { loadConfig } from '../plugins/cc-harness/lib/config.mjs';
 import { makeProject } from './helpers/project.mjs';
 
-const REGEX = '^(feat|fix)(\\((cli)\\))?!?: [a-z].{0,64}[^.]$\n# types: feat fix\n# scopes: cli\n';
+const REGEX = '^(feat|fix)(\\((cli)\\))?!?: [a-z](.{0,64}[^.])?$\n# types: feat fix\n# scopes: cli\n';
 const rules = Object.fromEntries(RULE_NAMES.map((n) => [`.claude/rules/harness-${n}.md`, '<!-- cc-harness: v0.1.0 -->\n# x\n']));
 const config = { version: 1, project: { markerFile: 'package.json', sourceGlobs: ['**/*.ts'], testGlobs: ['**/*.test.ts'] }, checks: [{ name: 'tc', cmd: 'true', ifExists: 'tsconfig.json', fast: true }, { name: 'test', cmd: 'true' }], guards: { stop: { checks: ['test'] } } };
 const gitOk = (cmd) => (cmd.includes('core.hooksPath') ? { status: 0, output: 'githooks\n' } : { status: 0, output: 'git version 2.40\n' });
@@ -2397,8 +2397,8 @@ test('deepMergeSettings: existing scalars win, arrays union, objects recurse', (
 });
 
 test('buildRegex with and without scopes', () => {
-  assert.equal(buildRegex(['feat', 'fix'], ['cli']), '^(feat|fix)(\\((cli)\\))?!?: [a-z].{0,64}[^.]$');
-  assert.equal(buildRegex(['feat'], []), '^(feat)(\\([a-z0-9-]+\\))?!?: [a-z].{0,64}[^.]$');
+  assert.equal(buildRegex(['feat', 'fix'], ['cli']), '^(feat|fix)(\\((cli)\\))?!?: [a-z](.{0,64}[^.])?$');
+  assert.equal(buildRegex(['feat'], []), '^(feat)(\\([a-z0-9-]+\\))?!?: [a-z](.{0,64}[^.])?$');
   assert.match('feat(cli): add x', new RegExp(buildRegex(['feat'], ['cli'])));
   assert.doesNotMatch('feat(cli): Add x.', new RegExp(buildRegex(['feat'], ['cli'])));
 });
@@ -2637,7 +2637,7 @@ export const DEFAULT_TYPES = ['feat', 'fix', 'docs', 'test', 'refactor', 'perf',
 
 export function buildRegex(types, scopes) {
   const scope = scopes.length ? `(\\((${scopes.join('|')})\\))?` : '(\\([a-z0-9-]+\\))?';
-  return `^(${types.join('|')})${scope}!?: [a-z].{0,64}[^.]$`;
+  return `^(${types.join('|')})${scope}!?: [a-z](.{0,64}[^.])?$`;
 }
 
 function yamlStep(step, indent = '      ') {
