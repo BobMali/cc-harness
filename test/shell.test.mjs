@@ -93,4 +93,7 @@ test('isSafe: builtin list, config list, non-destructive git subcommands', () =>
   assert.equal(isSafe({ word: 'find', args: ['.', '-delete'] }, cfg), false);
   assert.equal(isSafe({ word: 'git', args: ['stash', 'push', 'x.test.ts'] }, cfg), false);
   assert.equal(isSafe({ word: 'git', args: ['add', 'x.test.ts'] }, cfg), true);
+  // F1: global opts like -C <dir> take a value and must not be mistaken for the subcommand
+  assert.equal(isSafe({ word: 'git', args: ['-C', '/repo', 'diff', 'x.test.ts'] }, cfg), true);
+  assert.equal(isSafe({ word: 'git', args: ['-C', '/repo', 'checkout', 'x.test.ts'] }, cfg), false);
 });

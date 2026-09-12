@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { splitSegments, tokenize, resolveTool } from '../shell.mjs';
+import { splitSegments, tokenize, resolveTool, gitSubcommand } from '../shell.mjs';
 import { deny } from '../hook-io.mjs';
 import { parseRegexFile, extractCommitMessage, checkMessage } from '../commit-rules.mjs';
 
@@ -15,7 +15,7 @@ export function evaluate({ input, config, projectDir }) {
     const tokens = tokenize(seg);
     const tw = resolveTool(tokens, config.commands.runnerWrappers);
     if (tw.word !== 'git') continue;
-    const sub = tw.args.find((a) => !a.startsWith('-'));
+    const { sub } = gitSubcommand(tw.args);
     if (sub !== 'commit') continue;
     const message = extractCommitMessage(command, seg, tokens, (f) => {
       const abs = path.resolve(projectDir, f);

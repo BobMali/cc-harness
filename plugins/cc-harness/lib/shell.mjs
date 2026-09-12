@@ -186,9 +186,18 @@ export function isWrite(tokens, word, writeCommands = []) {
   return false;
 }
 
+// git [global opts] <subcommand> [args]; global opts like -C <dir> and -c k=v take a value
+export function gitSubcommand(args) {
+  let i = 0;
+  while (i < args.length && args[i].startsWith('-')) {
+    if (args[i] === '-C' || args[i] === '-c') i += 2; else i += 1;
+  }
+  return { sub: args[i] ?? '', rest: args.slice(i + 1) };
+}
+
 export function isSafe({ word, args }, config) {
   if (!word) return false;
-  if (word === 'git') return GIT_SAFE_SUB.has(args.find((a) => !a.startsWith('-')) ?? '');
+  if (word === 'git') return GIT_SAFE_SUB.has(gitSubcommand(args).sub);
   const safe = new Set([...(config.builtinSafe ?? []), ...(config.commands?.safe ?? [])]);
   return safe.has(word);
 }

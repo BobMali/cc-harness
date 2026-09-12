@@ -1,4 +1,4 @@
-import { splitSegments, tokenize, resolveTool } from '../shell.mjs';
+import { splitSegments, tokenize, resolveTool, gitSubcommand } from '../shell.mjs';
 import { ask } from '../hook-io.mjs';
 
 export const name = 'git';
@@ -15,22 +15,13 @@ const RULES = [
   { when: (s, a) => s === 'stash' && (a[0] === 'drop' || a[0] === 'clear'), what: 'discards stashed changes' },
 ];
 
-// git [global opts] <subcommand> [args]; global opts like -C <dir> and -c k=v take a value
-function splitGit(args) {
-  let i = 0;
-  while (i < args.length && args[i].startsWith('-')) {
-    if (args[i] === '-C' || args[i] === '-c') i += 2; else i += 1;
-  }
-  return { sub: args[i] ?? '', rest: args.slice(i + 1) };
-}
-
 export function evaluate({ input, config }) {
   if (input.tool_name !== 'Bash') return null;
   const command = typeof input.tool_input?.command === 'string' ? input.tool_input.command : '';
   for (const seg of splitSegments(command)) {
     const tw = resolveTool(tokenize(seg), config.commands.runnerWrappers);
     if (tw.word !== 'git') continue;
-    const { sub, rest } = splitGit(tw.args);
+    const { sub, rest } = gitSubcommand(tw.args);
     for (const r of RULES) {
       if (r.when(sub, rest)) return ask(`cc-harness git guard: "${seg}" ${r.what}. Confirm before running it.`);
     }
