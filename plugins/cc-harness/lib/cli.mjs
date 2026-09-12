@@ -1,3 +1,5 @@
+import { pluginVersion } from './meta.mjs';
+
 const USAGE = `usage: harness <command>
 
   hook <PreToolUse|PostToolUse|Stop|SessionStart>   run guards for a hook event (stdin: hook JSON)
@@ -19,7 +21,7 @@ export async function run(argv, io) {
     case 'sync-rules':
       return runSyncRules(rest, io);
     case 'version':
-      io.stdout.write('0.1.0\n');
+      io.stdout.write(pluginVersion() + '\n');
       return 0;
     case undefined:
     case '--help':

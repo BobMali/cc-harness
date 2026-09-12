@@ -1,0 +1,1 @@
+{ "project": { "markerFile": "marker.txt", "sourceGlobs": ["**/*.js"], "testGlobs": ["**/*.test.js"] }, "checks": [{ "name": "t", "cmd": "true", "fast": true }] }
