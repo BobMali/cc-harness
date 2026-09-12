@@ -33,6 +33,27 @@ test('redirectTargets finds > and >> targets, ignores 2>&1', () => {
   assert.deepEqual(redirectTargets('cat a.test.ts'), []);
 });
 
+test('backslash-newline is a line continuation, not a separator', () => {
+  assert.deepEqual(splitSegments('git commit -m "x" && \\\n  npx vitest run a.test.ts'), ['git commit -m "x"', 'npx vitest run a.test.ts']);
+  assert.deepEqual(tokenize('npx prettier --write \\\n src/a.ts'), ['npx', 'prettier', '--write', 'src/a.ts']);
+  assert.deepEqual(resolveTool(tokenize('npx vitest run \\\n a.test.ts'), W), { word: 'vitest', args: ['run', 'a.test.ts'] });
+});
+
+test('redirectTargets: unspaced, quoted target, and quoted > are handled', () => {
+  assert.deepEqual(redirectTargets('echo x>a.test.ts'), ['a.test.ts']);
+  assert.deepEqual(redirectTargets('echo x>>a.test.ts'), ['a.test.ts']);
+  assert.deepEqual(redirectTargets('echo "a > b.test.ts"'), []);
+  assert.deepEqual(redirectTargets('echo x > "my file.ts"'), ['my file.ts']);
+  assert.deepEqual(redirectTargets('cmd 2>&1'), []);
+  assert.deepEqual(redirectTargets('cmd >&2'), []);
+});
+
+test('heredoc bodies stay inside their segment', () => {
+  const cmd = "cat > notes.md <<'EOF'\ngit reset --hard\nrm -rf build\nEOF\nls";
+  assert.deepEqual(splitSegments(cmd), ["cat > notes.md <<'EOF'\ngit reset --hard\nrm -rf build\nEOF", 'ls']);
+  assert.deepEqual(splitSegments('git commit -F - <<EOF\nfeat: z\nEOF'), ['git commit -F - <<EOF\nfeat: z\nEOF']);
+});
+
 test('isWrite consults whenFlags / unlessFlags / bare entries', () => {
   const wc = [
     { cmd: 'prettier', whenFlags: ['--write', '-w'] },
@@ -47,7 +68,16 @@ test('isWrite consults whenFlags / unlessFlags / bare entries', () => {
   assert.equal(isWrite(['cat', 'x'], 'cat', wc), false);
 });
 
-test('isSafe: builtin list, config list, git read-only subcommands', () => {
+test('isWrite: both flag lists, multiple entries per cmd', () => {
+  const wc = [{ cmd: 'x', whenFlags: ['--write'], unlessFlags: ['--dry-run'] }, { cmd: 'p', whenFlags: ['-w'] }, { cmd: 'p', whenFlags: ['--write'] }];
+  assert.equal(isWrite(['x', '--write'], 'x', wc), true);
+  assert.equal(isWrite(['x', '--write', '--dry-run'], 'x', wc), false);
+  assert.equal(isWrite(['x'], 'x', wc), false);
+  assert.equal(isWrite(['p', '--write'], 'p', wc), true);
+  assert.equal(isWrite(['p', '-w'], 'p', wc), true);
+});
+
+test('isSafe: builtin list, config list, non-destructive git subcommands', () => {
   const cfg = mergeConfig(DEFAULTS, { commands: { safe: ['vitest'] } });
   assert.equal(isSafe({ word: 'cat', args: [] }, cfg), true);
   assert.equal(isSafe({ word: 'vitest', args: ['run'] }, cfg), true);
@@ -55,4 +85,7 @@ test('isSafe: builtin list, config list, git read-only subcommands', () => {
   assert.equal(isSafe({ word: 'git', args: ['diff', 'x.test.ts'] }, cfg), true);
   assert.equal(isSafe({ word: 'git', args: ['checkout', 'x.test.ts'] }, cfg), false);
   assert.equal(isSafe({ word: 'test', args: [] }, cfg), true);
+  assert.equal(isSafe({ word: 'find', args: ['.', '-delete'] }, cfg), false);
+  assert.equal(isSafe({ word: 'git', args: ['stash', 'push', 'x.test.ts'] }, cfg), false);
+  assert.equal(isSafe({ word: 'git', args: ['add', 'x.test.ts'] }, cfg), true);
 });

@@ -8,7 +8,7 @@ export const GUARD_NAMES = ['test', 'commit', 'quality', 'git', 'stop', 'preflig
 export const BUILTIN_SAFE = [
   'cat', 'head', 'tail', 'less', 'more', 'grep', 'rg', 'egrep', 'fgrep', 'wc', 'ls', 'stat', 'file',
   'realpath', 'basename', 'dirname', 'sort', 'uniq', 'cut', 'tr', 'nl', 'column', 'bat', 'diff', 'cmp',
-  'shasum', 'md5', 'md5sum', 'echo', 'printf', 'true', 'test', 'find', 'which', 'pwd',
+  'shasum', 'md5', 'md5sum', 'echo', 'printf', 'true', 'test', 'which', 'pwd',
 ];
 
 export const DEFAULTS = Object.freeze({
@@ -80,7 +80,11 @@ export function loadConfig(projectDir, { presetsDir = defaultPresetsDir() } = {}
   const presetName = user.preset ?? 'custom';
   let preset = {};
   if (presetName !== 'custom') {
-    preset = loadPreset(presetName, presetsDir);
+    try {
+      preset = loadPreset(presetName, presetsDir);
+    } catch (e) {
+      return { status: 'invalid', errors: [`preset "${presetName}" is not valid JSON: ${e.message}`] };
+    }
     if (preset === null) return { status: 'invalid', errors: [`unknown preset "${presetName}" (no ${presetName}.json in presets/)`] };
   }
   const config = mergeConfig(mergeConfig(DEFAULTS, preset), user);
@@ -99,7 +103,13 @@ export function validateConfig(c) {
   if (!strArr(c.commands?.safe)) errors.push('commands.safe must be an array of strings');
   if (!strArr(c.commands?.runnerWrappers)) errors.push('commands.runnerWrappers must be an array of strings');
   if (!Array.isArray(c.commands?.write)) errors.push('commands.write must be an array');
-  else c.commands.write.forEach((w, i) => { if (!isObj(w) || typeof w.cmd !== 'string') errors.push(`commands.write[${i}].cmd must be a string`); });
+  else c.commands.write.forEach((w, i) => {
+    if (!isObj(w) || typeof w.cmd !== 'string') errors.push(`commands.write[${i}].cmd must be a string`);
+    if (isObj(w)) {
+      if ('whenFlags' in w && !strArr(w.whenFlags)) errors.push(`commands.write[${i}].whenFlags must be an array of strings`);
+      if ('unlessFlags' in w && !strArr(w.unlessFlags)) errors.push(`commands.write[${i}].unlessFlags must be an array of strings`);
+    }
+  });
   const names = new Set();
   if (!Array.isArray(c.checks)) errors.push('checks must be an array');
   else c.checks.forEach((ch, i) => {

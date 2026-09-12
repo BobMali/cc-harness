@@ -45,14 +45,24 @@ test('loadConfig: preset merged under user keys, unknown preset rejected', () =>
   try { assert.equal(loadConfig(q.dir, { presetsDir: PRESETS }).status, 'invalid'); } finally { q.cleanup(); }
 });
 
+test('loadConfig: broken preset JSON → status invalid with message', () => {
+  const p = makeProject({ config: { version: 1, preset: 'broken' } });
+  try {
+    const r = loadConfig(p.dir, { presetsDir: PRESETS });
+    assert.equal(r.status, 'invalid');
+    assert.match(r.errors[0], /preset "broken" is not valid JSON/);
+  } finally { p.cleanup(); }
+});
+
 test('validateConfig catches shape errors', () => {
   const bad = mergeConfig(DEFAULTS, {
     version: 2,
     checks: [{ name: 'a', cmd: 'true' }, { name: 'a', cmd: 'true' }, { name: 'b' }],
     guards: { stop: { checks: ['zzz'], maxBlocks: 9 }, quality: { scope: 'medium' } },
+    commands: { write: [{ cmd: 'a', whenFlags: '--w' }] },
   });
   const errs = validateConfig(bad);
-  for (const re of [/version/, /duplicate check name "a"/, /checks\[2\]\.cmd/, /stop\.checks.*"zzz"/, /maxBlocks/, /quality\.scope/]) {
+  for (const re of [/version/, /duplicate check name "a"/, /checks\[2\]\.cmd/, /stop\.checks.*"zzz"/, /maxBlocks/, /quality\.scope/, /commands\.write\[0\]\.whenFlags/]) {
     assert.ok(errs.some((e) => re.test(e)), `expected an error matching ${re}: ${JSON.stringify(errs)}`);
   }
   assert.deepEqual(validateConfig(DEFAULTS), []);
