@@ -58,7 +58,7 @@ export function splitSegments(cmdline) {
         continue;
       }
     }
-    if (c === '\n' || c === ';') {
+    if (c === '\n') {
       if (heredocTerm !== null) {
         inHeredoc = true;
         cur += c;
@@ -67,6 +67,7 @@ export function splitSegments(cmdline) {
       }
       segs.push(cur); cur = ''; continue;
     }
+    if (c === ';') { segs.push(cur); cur = ''; continue; }
     if (c === '&' && cur.endsWith('>')) { cur += c; continue; }   // 2>&1
     if (c === '&' || c === '|') {
       if (s[i + 1] === c) i++;
