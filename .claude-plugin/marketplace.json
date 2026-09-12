@@ -1,0 +1,13 @@
+{
+  "name": "cc-harness",
+  "description": "Guardrails and bootstrap for Claude Code projects: test guard, commit guard, quality gate, destructive-git guard, stop gate, session preflight.",
+  "owner": { "name": "BobMali" },
+  "plugins": [
+    {
+      "name": "cc-harness",
+      "description": "Config-driven guardrails for Claude Code",
+      "source": "./plugins/cc-harness",
+      "category": "productivity"
+    }
+  ]
+}
