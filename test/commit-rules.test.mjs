@@ -36,6 +36,21 @@ test('extractCommitMessage handles -m, multiple -m, --message=, -F file, heredoc
   assert.equal(extractCommitMessage(seg, seg, tokenize(seg), (f) => (f === 'msg.txt' ? 'docs: from file\n' : null)), 'docs: from file');
 });
 
+test('F2: heredoc extraction matches the segment (not the whole command), and <<- strips leading tabs', () => {
+  const multi = 'cat <<EOF > note.txt\nfeat: decoy\nEOF\ngit commit -F - <<EOF2\nbad message\nEOF2';
+  assert.equal(extract(multi), 'bad message');
+  assert.equal(extract('git commit -F - <<-EOF\n\tfeat: ok\n\tEOF'), 'feat: ok');
+});
+
+test('F3: attached -m"value" form', () => {
+  assert.equal(extract('git commit -m"feat: attached"'), 'feat: attached');
+});
+
+test('F4: the $(cat <<EOF ... ) idiom is expanded; other $() or backtick values bail with null', () => {
+  assert.equal(extract('git commit -m "$(cat <<\'EOF\'\nfeat: add x\n\nbody here\nEOF\n)"'), 'feat: add x\n\nbody here');
+  assert.equal(extract('git commit -m "$(echo hi)"'), null);
+});
+
 test('checkMessage validates subject and trailers', () => {
   const rules = parseRegexFile(FILE);
   assert.deepEqual(checkMessage('feat(cli): add thing', rules, { rejectAttributionTrailers: true }), []);
@@ -46,4 +61,9 @@ test('checkMessage validates subject and trailers', () => {
   assert.match(checkMessage('feat: ok\n\n🤖 Generated with [Claude Code](https://claude.com)', rules, { rejectAttributionTrailers: true })[0], /attribution/);
   assert.deepEqual(checkMessage('feat: ok\n\nCo-Authored-By: X <x@y>', rules, { rejectAttributionTrailers: false }), []);
   assert.match(checkMessage('feat: ok', { regex: null, types: [], scopes: [], error: 'x' }, {})[0], /regex file/);
+});
+
+test('hygiene: a trailing \\r on the subject is stripped before matching (so a hidden CR cannot mask a trailing period)', () => {
+  const rules = parseRegexFile(FILE);
+  assert.match(checkMessage('feat: ok.\r', rules, {})[0], /subject/);
 });

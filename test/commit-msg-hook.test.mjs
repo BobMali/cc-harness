@@ -28,15 +28,37 @@ test('commit-msg hook accepts and rejects like the guard', () => {
   } finally { p.cleanup(); }
 });
 
+test('F5: an empty regex line on line 1 fails closed instead of matching everything', () => {
+  const p = makeProject({ files: { 'githooks/conventional-regex.txt': '\n# types: feat fix\n' } });
+  try {
+    spawnSync('git', ['init', '-q'], { cwd: p.dir });
+    const r = runHook(p, 'total garbage\n');
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /no regex on line 1/);
+  } finally { p.cleanup(); }
+});
+
+test('hygiene: a trailing \\r on the subject/regex does not mask a real mismatch', () => {
+  const p = makeProject({ files: { 'githooks/conventional-regex.txt': REGEX } });
+  try {
+    spawnSync('git', ['init', '-q'], { cwd: p.dir });
+    assert.equal(runHook(p, 'feat: ok\r\n').status, 0);
+    assert.equal(runHook(p, 'feat: ok.\r\n').status, 1);
+  } finally { p.cleanup(); }
+});
+
 test('under git with core.hooksPath the hook blocks a real commit', () => {
   const p = makeProject({ files: { 'githooks/conventional-regex.txt': REGEX, 'a.txt': 'a' } });
   try {
     fs.mkdirSync(path.join(p.dir, 'githooks'), { recursive: true });
     fs.copyFileSync(HOOK, path.join(p.dir, 'githooks/commit-msg'));
     fs.chmodSync(path.join(p.dir, 'githooks/commit-msg'), 0o755);
-    const git = (...a) => spawnSync('git', a, { cwd: p.dir, encoding: 'utf8', env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } });
+    assert.ok(fs.statSync(HOOK).mode & 0o111, 'template hook must be executable');
+    const git = (...a) => spawnSync('git', a, { cwd: p.dir, encoding: 'utf8', env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null', GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } });
     git('init', '-q'); git('config', 'core.hooksPath', 'githooks'); git('add', '.');
-    assert.notEqual(git('commit', '-q', '-m', 'bad message').status, 0);
+    const bad = git('commit', '-q', '-m', 'bad message');
+    assert.notEqual(bad.status, 0);
+    assert.match(bad.stderr, /does not match the required format/);
     assert.equal(git('commit', '-q', '-m', 'feat: good message').status, 0);
   } finally { p.cleanup(); }
 });

@@ -17,19 +17,49 @@ export function parseRegexFile(text) {
   return out;
 }
 
-const HEREDOC = /<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1[^\n]*\n([\s\S]*?)\n\s*\2\s*$/m;
+// Captures whether `<<-` (tab-stripping) was used, the quote around the terminator, the
+// terminator word, and the body. Matched against a single segment (never the whole command,
+// which may carry unrelated heredocs of its own).
+const HEREDOC = /<<(-?)\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\2[^\n]*\n([\s\S]*?)\n\s*\3\s*$/m;
 
-// Returns the commit message text, or null when the command carries no inline message.
+// `$(cat <<[-]TERM ... TERM)`, the idiom Claude Code commonly writes for multi-line -m values.
+const CAT_HEREDOC = /^\$\(\s*cat\s+<<(-?)\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\2\s*\n([\s\S]*?)\n\s*\3\s*\n?\s*\)\s*$/;
+
+function stripLeadingTabs(body) {
+  return body.split('\n').map((l) => l.replace(/^\t+/, '')).join('\n');
+}
+
+// Resolves a raw -m/--message value. Returns { ok: true, value } when the value is a plain
+// string or a recognised `$(cat <<EOF ...)` idiom (expanded to its body); returns { ok: false }
+// when the value still contains an unresolved `$( )` or backtick substitution the guard cannot
+// safely evaluate — the caller then bails out entirely and defers to the (authoritative) hook.
+function resolveValue(value) {
+  const m = CAT_HEREDOC.exec(value);
+  if (m) return { ok: true, value: m[1] === '-' ? stripLeadingTabs(m[4]) : m[4] };
+  if (/\$\(|`/.test(value)) return { ok: false };
+  return { ok: true, value };
+}
+
+// Returns the commit message text, or null when the command carries no inline message
+// (or carries one the guard cannot safely resolve, e.g. an un-expandable command substitution).
 export function extractCommitMessage(rawCommand, segment, tokens, readFile) {
   const parts = [];
+  const push = (raw) => {
+    const r = resolveValue(raw);
+    if (!r.ok) return false;
+    parts.push(r.value);
+    return true;
+  };
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i];
-    if (t === '-m' || t === '--message') { if (i + 1 < tokens.length) parts.push(tokens[++i]); continue; }
-    if (t.startsWith('--message=')) { parts.push(t.slice('--message='.length)); continue; }
-    if (/^-[a-zA-Z]*m$/.test(t)) { if (i + 1 < tokens.length) parts.push(tokens[++i]); continue; }   // -am, -sm
+    if (t === '-m' || t === '--message') { if (i + 1 < tokens.length) { if (!push(tokens[++i])) return null; } continue; }
+    if (t.startsWith('--message=')) { if (!push(t.slice('--message='.length))) return null; continue; }
+    const attached = /^-[a-zA-Z]*m(.+)$/.exec(t);
+    if (attached) { if (!push(attached[1])) return null; continue; }   // -m"msg", -am"msg"
+    if (/^-[a-zA-Z]*m$/.test(t)) { if (i + 1 < tokens.length) { if (!push(tokens[++i])) return null; } continue; }   // -am, -sm
     if (t === '-F' || t === '--file') {
       const f = tokens[i + 1];
-      if (f === '-') { const m = HEREDOC.exec(rawCommand); return m ? m[3] : null; }
+      if (f === '-') { const m = HEREDOC.exec(segment); if (!m) return null; return m[1] === '-' ? stripLeadingTabs(m[4]) : m[4]; }
       if (f) { const body = readFile(f); return body === null || body === undefined ? null : String(body).replace(/\s+$/, ''); }
     }
     if (t.startsWith('--file=')) { const body = readFile(t.slice(7)); return body == null ? null : String(body).replace(/\s+$/, ''); }
@@ -43,12 +73,12 @@ export function checkMessage(message, rules, { rejectAttributionTrailers = true 
     errors.push(`the commit regex file could not be used (${rules.error ?? 'missing'}); fix it before committing`);
     return errors;
   }
-  const subject = message.split(/\r?\n/)[0] ?? '';
+  const subject = (message.split(/\r?\n/)[0] ?? '').replace(/\r$/, '');
   if (!rules.regex.test(subject)) {
     let hint = `subject "${subject}" does not match ${rules.regex.source}`;
     if (rules.types.length) hint += `\n  allowed types: ${rules.types.join(' ')}`;
     if (rules.scopes.length) hint += `\n  allowed scopes: ${rules.scopes.join(' ')}`;
-    hint += '\n  expected: type(scope): lower-case imperative subject, no trailing period, ≤ 65 chars after the colon';
+    hint += '\n  expected: type(scope): lower-case imperative subject, no trailing period, ≤ 66 chars after the colon';
     errors.push(hint);
   }
   if (rejectAttributionTrailers && TRAILER_PATTERNS.some((re) => re.test(message))) {

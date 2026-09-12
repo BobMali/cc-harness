@@ -15,7 +15,7 @@ function run(p, command, over = {}) {
 test('valid commits pass', () => {
   const p = makeProject({ files });
   try {
-    for (const c of ['git commit -m "feat: add x"', "git commit -am 'fix(cli): y'", 'git commit -F msg.txt', 'git commit --amend --no-edit', 'git commit', 'git status', 'echo git commit -m "bad"', 'git commit -F - <<\'EOF\'\nfeat(guards): z\nEOF']) {
+    for (const c of ['git commit -m "feat: add x"', "git commit -am 'fix(cli): y'", 'git commit -F msg.txt', 'git commit --amend --no-edit', 'git commit', 'git status', 'echo git commit -m "bad"', 'git commit -F - <<\'EOF\'\nfeat(guards): z\nEOF', 'git commit -m "$(cat <<\'EOF\'\nfeat: ok\nEOF\n)"']) {
       assert.equal(run(p, c), null, c);
     }
   } finally { p.cleanup(); }
@@ -31,6 +31,13 @@ test('invalid commits deny with the format hint', () => {
     assert.equal(run(p, 'git commit -m "feat: ok" -m "Co-Authored-By: bot <b@x>"')?.kind, 'deny');
     assert.equal(run(p, 'git commit -F - <<EOF\nfeat: ok\n\nClaude-Session: https://x\nEOF')?.kind, 'deny');
     assert.equal(run(p, 'git commit -m "feat: ok" -m "Co-Authored-By: bot <b@x>"', { guards: { commit: { rejectAttributionTrailers: false } } }), null);
+    // F1: -C <dir> and -c k=v must not be mistaken for the subcommand
+    assert.equal(run(p, 'git -C sub commit -m "bad message"')?.kind, 'deny');
+    assert.equal(run(p, 'git -c user.name=x commit -m "bad message"')?.kind, 'deny');
+    // F3: attached -m"value" form
+    assert.equal(run(p, 'git commit -m"bad message"')?.kind, 'deny');
+    // F4: the $(cat <<EOF ... EOF) idiom, once expanded, still validates the resulting message
+    assert.equal(run(p, 'git commit -m "$(cat <<\'EOF\'\nbad message\nEOF\n)"')?.kind, 'deny');
   } finally { p.cleanup(); }
 });
 
