@@ -54,6 +54,11 @@ test('heredoc bodies stay inside their segment', () => {
   assert.deepEqual(splitSegments('git commit -F - <<EOF\nfeat: z\nEOF'), ['git commit -F - <<EOF\nfeat: z\nEOF']);
 });
 
+test('a semicolon after a heredoc marker still splits', () => {
+  assert.deepEqual(splitSegments('cat <<EOF; rm -rf build\nbody\nEOF'), ['cat <<EOF', 'rm -rf build\nbody\nEOF']);
+  assert.deepEqual(splitSegments("cat <<'EOF' > f.test.ts; git add f.test.ts\nbody\nEOF"), ["cat <<'EOF' > f.test.ts", 'git add f.test.ts\nbody\nEOF']);
+});
+
 test('isWrite consults whenFlags / unlessFlags / bare entries', () => {
   const wc = [
     { cmd: 'prettier', whenFlags: ['--write', '-w'] },
