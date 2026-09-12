@@ -19,7 +19,7 @@
 - Commit messages: one conventional subject line, **no body, no trailers**. Types `feat fix docs test refactor build ci chore`; scopes `cli guards config render presets skills docs ci`.
 - Test files live flat in `test/` as `test/<name>.test.mjs`; run with `node --test test/*.test.mjs` (works on Node 18 and 22).
 - Hook output shapes (verified against docs): PreToolUse → `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask|deny","permissionDecisionReason":"..."}}`; PostToolUse and Stop → `{"decision":"block","reason":"..."}`; SessionStart → plain text on stdout.
-- Sandbox note for the controller: Bash cannot write to this repo's `.claude/settings.json`, `.claude/skills`, `.claude/hooks`, or `.git`. Use the Write/Edit tools for those files and run git with the sandbox disabled.
+- Sandbox note for every implementer: on this machine the Bash sandbox denies writes to `.git` (so `git add`/`git commit` fail with `index.lock: Operation not permitted`) and to this repo's `.claude/settings.json`, `.claude/skills`, `.claude/hooks`. Run every commit step with `dangerouslyDisableSandbox: true`; if the permission gate denies that, stop and report the tree as ready-to-commit instead of retrying. Use the Write/Edit tools, never Bash, for files under `.claude/`.
 - The machine's `/bin/sh` is what `checks[].cmd` runs under (`spawnSync('/bin/sh', ['-c', cmd])`).
 
 ## File Structure
@@ -546,7 +546,7 @@ Note: `config.builtinSafe` is populated by `mergeConfig` in Step 11 (DEFAULTS ca
 - [ ] **Step 8: Run shell tests**
 
 Run: `node --test test/shell.test.mjs`
-Expected: PASS for all except `isSafe` cases that need `DEFAULTS` (they fail until Step 11). Proceed.
+Expected: FAIL at import time with cannot find module `config.mjs` (the shell test imports `DEFAULTS` and `mergeConfig`). That is the right failure for now; the file passes after Step 11. Proceed.
 
 - [ ] **Step 9: Write the project fixture helper**
 
@@ -2163,7 +2163,7 @@ test('invalid config is a single error finding', () => {
   try {
     const r = report(p);
     assert.equal(r.findings.filter((f) => f.level === 'error').length, 1);
-    assert.match(r.findings[0].text, /version must be 1/);
+    assert.match(r.findings.find((f) => f.level === 'error').text, /version must be 1/);
   } finally { p.cleanup(); }
 });
 
@@ -2649,7 +2649,7 @@ function yamlStep(step, indent = '      ') {
     if (isObj(v)) {
       lines.push(`${prefix}${k}:`);
       for (const [kk, vv] of Object.entries(v)) lines.push(`${indent}    ${kk}: ${JSON.stringify(vv)}`);
-    } else lines.push(`${prefix}${k}: ${typeof v === 'string' ? `'${v.replace(/'/g, "''")}'` : v}`);   // single-quoted YAML scalar: safe for [ ], :, #
+    } else lines.push(`${prefix}${k}: ${k === 'run' ? `'${String(v).replace(/'/g, "''")}'` : v}`);   // run is single-quoted: it may start with [ or contain : and #
   });
   return lines.join('\n');
 }
@@ -3239,6 +3239,8 @@ Config-driven guardrails and a one-command bootstrap for Claude Code projects. Z
 | preflight | session start | prints a status block: version, preset, active guards, skipped checks, findings |
 
 A project without `.claude/harness.json` sees nothing.
+
+The stop gate arms only on edits made through Claude's Write/Edit tools. A source change made by a shell command (`sed -i`, a formatter, `git apply`) does not arm it; the quality gate does not see those either.
 
 ## Install
 
