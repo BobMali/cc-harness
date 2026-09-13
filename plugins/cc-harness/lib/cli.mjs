@@ -5,6 +5,7 @@ import { readJson, toHookJson, pickDecision, ask } from './hook-io.mjs';
 import { loadConfig, isGuardEnabled } from './config.mjs';
 import { guardsFor } from './guards/index.mjs';
 import { pluginRoot, pluginVersion } from './meta.mjs';
+import { defaultExec } from './checks.mjs';
 
 const USAGE = `usage: harness <command>
 
@@ -63,7 +64,7 @@ export async function runHook(event, io, overrides = {}) {
     event, input, config, projectDir,
     dataDir: overrides.dataDir || io.env.CLAUDE_PLUGIN_DATA || path.join(os.tmpdir(), 'cc-harness'),
     pluginRoot: pluginRoot(),
-    exec: overrides.exec,          // T4 provides defaultExec; undefined until then
+    exec: overrides.exec ?? defaultExec,
     fs,
     now: () => Date.now(),
   };
