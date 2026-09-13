@@ -32,7 +32,7 @@ export function parseInitArgs(args, env) {
   };
 }
 
-const isRepo = (m) => /^[\w.-]+\/[\w.-]+$/.test(m);
+const isRepo = (m) => /^[\w-]+\/[\w.-]+$/.test(m);
 
 function permissionFragment(config) {
   const allow = new Set(['Bash(git status:*)', 'Bash(git diff:*)', 'Bash(git log:*)', 'Bash(git show:*)', 'Bash(git branch:*)']);
@@ -42,7 +42,11 @@ function permissionFragment(config) {
     if (w.whenFlags) for (const f of w.whenFlags) ask.add(`Bash(${w.cmd} ${f}:*)`);
     else ask.add(`Bash(${w.cmd}:*)`);
   }
-  const deny = ['Read(./.env)', 'Read(./.env.*)', 'Edit(./.env)', 'Edit(./.env.*)', 'Read(**/*.pem)', 'Edit(**/*.pem)', 'Read(**/credentials.*)', 'Read(~/.ssh/**)', 'Read(~/.gnupg/**)'];
+  const deny = [
+    'Read(**/.env)', 'Read(**/.env.*)', 'Edit(**/.env)', 'Edit(**/.env.*)',
+    'Read(**/*.pem)', 'Edit(**/*.pem)', 'Read(**/credentials.*)', 'Edit(**/credentials.*)',
+    'Read(~/.ssh/**)', 'Edit(~/.ssh/**)', 'Read(~/.gnupg/**)', 'Edit(~/.gnupg/**)',
+  ];
   return { allow: [...allow], ask: [...ask], deny };
 }
 
@@ -66,10 +70,12 @@ export function planInit(opts) {
   writes.push({ rel: '.claude/harness.json', content: JSON.stringify(harnessJson, null, 2) + '\n', action: exists('.claude/harness.json') ? 'overwrite' : 'create' });
 
   const settingsFragment = { enabledPlugins: { [PLUGIN_KEY]: true }, permissions: permissionFragment(config) };
-  const marketEntry = { [MARKET]: { source: isRepo(opts.marketplace) ? { source: 'github', repo: opts.marketplace } : { source: 'directory', path: path.resolve(opts.marketplace) } } };
-  if (isRepo(opts.marketplace)) settingsFragment.extraKnownMarketplaces = marketEntry;
+  const marketIsRepo = isRepo(opts.marketplace);
+  const marketPath = marketIsRepo ? null : path.resolve(process.cwd(), opts.marketplace);
+  const marketEntry = { [MARKET]: { source: marketIsRepo ? { source: 'github', repo: opts.marketplace } : { source: 'directory', path: marketPath } } };
+  if (marketIsRepo) settingsFragment.extraKnownMarketplaces = marketEntry;
   writes.push(mergeJsonWrite(opts.targetDir, '.claude/settings.json', settingsFragment));
-  if (!isRepo(opts.marketplace)) {
+  if (!marketIsRepo) {
     writes.push(mergeJsonWrite(opts.targetDir, LOCAL_SETTINGS, { extraKnownMarketplaces: marketEntry }));
     const gi = exists('.gitignore') ? fs.readFileSync(path.join(opts.targetDir, '.gitignore'), 'utf8') : '';
     if (!gi.split(/\r?\n/).includes(LOCAL_SETTINGS)) writes.push({ rel: '.gitignore', content: (gi && !gi.endsWith('\n') ? gi + '\n' : gi) + LOCAL_SETTINGS + '\n', action: gi ? 'append' : 'create' });
@@ -93,7 +99,7 @@ export function planInit(opts) {
 
   const checklist = [
     'git config core.hooksPath githooks',
-    `claude plugin marketplace add ${opts.marketplace}`,
+    `claude plugin marketplace add ${marketIsRepo ? opts.marketplace : marketPath}`,
     `claude plugin install ${PLUGIN_KEY}`,
     exists('CLAUDE.md') ? 'merge CLAUDE.harness.md into your CLAUDE.md, then delete it' : 'fill in the placeholders in CLAUDE.md',
     'restart Claude Code (or /reload) so the plugin hooks load; the session preflight will confirm',
@@ -141,9 +147,24 @@ export function syncRules(opts, io) {
   if (loaded.status !== 'ok') { io.stderr.write(`cc-harness sync-rules: ${loaded.status === 'absent' ? '.claude/harness.json not found; run init first' : loaded.errors.join('; ')}\n`); return 1; }
   const config = loaded.config;
   const preset = config.preset === 'custom' ? {} : (loadPreset(config.preset, opts.presetsDir ?? defaultPresetsDir()) ?? {});
-  const regexAbs = path.join(targetDir, config.guards.commit.regexFile);
-  const rules = fs.existsSync(regexAbs) ? parseRegexFile(fs.readFileSync(regexAbs, 'utf8')) : { types: DEFAULT_TYPES, scopes: [] };
+  const regexRel = config.guards.commit.regexFile;
+  const regexAbs = path.join(targetDir, regexRel);
+  const regexExists = fs.existsSync(regexAbs);
+  let rules = { types: [], scopes: [] };
+  if (regexExists) {
+    rules = parseRegexFile(fs.readFileSync(regexAbs, 'utf8'));
+  } else {
+    io.stderr.write(`cc-harness sync-rules: ${regexRel} regex file not found; run init\n`);
+  }
+  const noTypesLine = regexExists && rules.types.length === 0;
+  if (noTypesLine) {
+    io.stderr.write(`cc-harness sync-rules: ${regexRel} has no "# types:" line; the commits rule will point at the file instead of listing types\n`);
+  }
   const vars = templateVars({ config, preset, types: rules.types.length ? rules.types : DEFAULT_TYPES, scopes: rules.scopes, pluginVersion: version, projectName: path.basename(targetDir) });
+  if (noTypesLine) {
+    vars.COMMIT_TYPES = `see ${regexRel} (line 1 is the rule)`;
+    vars.COMMIT_SCOPES_LINE = `see ${regexRel}`;
+  }
   const tdir = opts.templatesDir ?? templatesDir();
   const writes = RULE_NAMES.map((n) => ({ rel: `.claude/rules/harness-${n}.md`, content: render(fs.readFileSync(path.join(tdir, 'rules', `harness-${n}.md.tmpl`), 'utf8'), vars), action: 'overwrite' }));
   writes.push({ rel: 'githooks/commit-msg', content: fs.readFileSync(path.join(tdir, 'githooks', 'commit-msg'), 'utf8'), action: 'overwrite', mode: 0o755 });

@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { Writable } from 'node:stream';
 import { planInit, init, syncRules, parseInitArgs } from '../plugins/cc-harness/lib/init.mjs';
@@ -32,7 +33,7 @@ test('fresh ts project: exact file set, contents wired together', () => {
     assert.ok(s.permissions.allow.includes('Bash(git status:*)'));
     assert.ok(s.permissions.ask.includes('Bash(git push:*)'));
     assert.ok(s.permissions.ask.includes('Bash(prettier --write:*)'));
-    assert.ok(s.permissions.deny.includes('Read(./.env)'));
+    assert.ok(s.permissions.deny.includes('Read(**/.env)'));
     const rules = parseRegexFile(p.read('githooks/conventional-regex.txt'));
     assert.deepEqual(rules.types, ['feat', 'fix']); assert.deepEqual(rules.scopes, ['api']);
     assert.match('feat(api): x', rules.regex);
@@ -112,6 +113,60 @@ test('syncRules re-renders only rules and the hook script', () => {
     assert.match(p.read('githooks/commit-msg'), /^#!\/bin\/sh/);
     assert.equal(p.read('CLAUDE.md'), 'mine');
     assert.match(p.read('.claude/rules/harness-commits.md'), /Types: feat fix/);   // types re-read from the regex file
+  } finally { p.cleanup(); }
+});
+
+test('F1: dot-relative marketplace paths are treated as local, not github, and resolve to an absolute path', () => {
+  const p = makeProject({});
+  try {
+    for (const m of ['../x', './x']) {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-harness-f1-'));
+      const o = io();
+      assert.equal(init(base(dir, { marketplace: m }), o), 0);
+      const local = JSON.parse(fs.readFileSync(path.join(dir, '.claude/settings.local.json'), 'utf8'));
+      assert.equal(local.extraKnownMarketplaces['cc-harness'].source.source, 'directory');
+      assert.ok(path.isAbsolute(local.extraKnownMarketplaces['cc-harness'].source.path), `path not absolute for ${m}`);
+      const settings = JSON.parse(fs.readFileSync(path.join(dir, '.claude/settings.json'), 'utf8'));
+      assert.ok(!('extraKnownMarketplaces' in settings));
+      assert.ok(o.stdout.text().includes(local.extraKnownMarketplaces['cc-harness'].source.path), 'checklist should show the resolved absolute path');
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  } finally { p.cleanup(); }
+});
+
+test('F1: owner/repo with a dot in the repo name is still github', () => {
+  const p = makeProject({});
+  try {
+    init(base(p.dir, { marketplace: 'a/b.c' }), io());
+    const s = JSON.parse(p.read('.claude/settings.json'));
+    assert.deepEqual(s.extraKnownMarketplaces['cc-harness'], { source: { source: 'github', repo: 'a/b.c' } });
+  } finally { p.cleanup(); }
+});
+
+test('F2: deny profile matches the exact fixed list', () => {
+  const p = makeProject({ files: { 'package.json': '{}' } });
+  try {
+    init(base(p.dir), io());
+    const s = JSON.parse(p.read('.claude/settings.json'));
+    assert.deepEqual(s.permissions.deny, [
+      'Read(**/.env)', 'Read(**/.env.*)', 'Edit(**/.env)', 'Edit(**/.env.*)',
+      'Read(**/*.pem)', 'Edit(**/*.pem)', 'Read(**/credentials.*)', 'Edit(**/credentials.*)',
+      'Read(~/.ssh/**)', 'Edit(~/.ssh/**)', 'Read(~/.gnupg/**)', 'Edit(~/.gnupg/**)',
+    ]);
+  } finally { p.cleanup(); }
+});
+
+test('F3: syncRules warns and points at the regex file when it has no "# types:" line', () => {
+  const p = makeProject({ files: { 'package.json': '{}' } });
+  try {
+    init(base(p.dir), io());
+    p.write('githooks/conventional-regex.txt', '^(feat|fix)(\\((api)\\))?!?: .+$\n');
+    const o = io();
+    assert.equal(syncRules({ targetDir: p.dir, pluginVersion: '0.2.0' }, o), 0);
+    assert.match(o.stderr.text(), /no "# types:" line/);
+    const commits = p.read('.claude/rules/harness-commits.md');
+    assert.match(commits, /see githooks\/conventional-regex\.txt/);
+    assert.doesNotMatch(commits, /docs test refactor/);
   } finally { p.cleanup(); }
 });
 
