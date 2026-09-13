@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-13-eval-suite-design.md`
 
-**Prerequisite:** the harness build plan (`docs/superpowers/plans/2026-09-12-cc-harness.md`) through Task 9, so `.claude/harness.json` and `.github/workflows/harness.yml` exist in this repo.
+**Prerequisite:** the harness build plan (`docs/superpowers/plans/2026-09-12-cc-harness.md`) complete **including its final whole-branch review and fix wave**, so `.claude/harness.json` and `.github/workflows/harness.yml` exist and the deferred gaps E4 marks as `known_gap` are settled. Do not dispatch any E-task while that plan is running: E0 edits `lib/cli.mjs` and E5 edits `.claude/harness.json`. Before dispatching E4, re-check its `known_gap` list against the build ledger; a gap the fix wave closed must be written without the flag.
 
 ## Global Constraints
 
@@ -430,7 +430,7 @@ test('long commands are truncated; long heredoc bodies are elided', () => {
   assert.equal(short.text, `cat <<EOF\na\nb\nEOF`);
 });
 ```
-Note: `git commit -m "feat: tokenizer"` must survive, so the `token` pattern is a word match (`\btoken\b`), not a substring.
+Note: `git commit -m "feat: tokenizer"` must survive while `GITHUB_TOKEN=abc` and `$SECRET_KEY` must drop, so the word patterns use letter-only boundaries (`(?:^|[^a-z])tokens?(?![a-z])`), never `\b` (an underscore is a word character). The base64 rule requires at least one digit in the run so a letters-only path like `src/components/Dashboard/Widgets` is not dropped.
 
 - [ ] **Step 6: Run to verify failure**
 
@@ -445,10 +445,10 @@ export const MAX_HEREDOC_LINES = 40;
 const KEEP = 5;
 
 export const SECRET_PATTERNS = [
-  /\btokens?\b/i, /\bsecrets?\b/i, /\bpassword\b/i, /\bapi[_-]?key\b/i, /authorization:/i,
+  /(?:^|[^a-z])tokens?(?![a-z])/i, /(?:^|[^a-z])secrets?(?![a-z])/i, /(?:^|[^a-z])password(?![a-z])/i, /(?:^|[^a-z])api[_-]?key(?![a-z])/i, /authorization:/i,
   /:\/\/[^/\s:@]+:[^/\s@]+@/, /-----BEGIN/,
   /(?:^|[^A-Za-z0-9+/=])[A-Fa-f0-9]{32,}(?![A-Za-z0-9+/=])/,
-  /(?:^|[^A-Za-z0-9+/=])[A-Za-z0-9+/]{32,}={0,2}(?![A-Za-z0-9+/=])/,
+  /(?:^|[^A-Za-z0-9+/=])(?=[A-Za-z+/]*\d)[A-Za-z0-9+/]{32,}={0,2}(?![A-Za-z0-9+/=])/,   // needs a digit so letters-only paths survive
 ];
 
 export const SENSITIVE_PATHS = [/\.ssh(\/|\b)/, /\.gnupg(\/|\b)/, /(^|[\s"'/=])\.env(\.[A-Za-z0-9_.-]+)?(?=$|[\s"'/;&|])/, /\.npmrc\b/];
@@ -528,7 +528,7 @@ git commit -m "feat(evals): add corpus io and redaction"
 ```
 {"id":"ts-000010","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git reset --hard"},"expected":{"kind":"ask","guard":"git"},"source":"adversarial","note":"spec list"}
 {"id":"ts-000011","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git push origin +main"},"expected":{"kind":"ask","guard":"git","known_gap":true},"source":"adversarial","note":"refspec force; deferred"}
-{"id":"ts-000012","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git clean -fd"},"expected":{"kind":"pass","known_gap":true},"source":"adversarial","note":"gap marked but actually closed → must fail"}
+{"id":"ts-000012","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git clean -fd"},"expected":{"kind":"ask","guard":"git","known_gap":true},"source":"adversarial","note":"gap marked but actually closed → must fail"}
 ```
 
 - [ ] **Step 2: Write failing runner tests**
@@ -586,11 +586,11 @@ test('compare statuses', () => {
   assert.equal(compare(v({ kind: 'ask', known_gap: true }), { kind: 'ask' }), 'gap-closed');
 });
 
-test('runSuite: exit 2 with unlabelled, 1 on mismatch, --update fixes mined only', () => {
+test('runSuite: mismatch outranks unlabelled, --update fixes mined only', () => {
   const c = copyFixture();
   try {
     const r1 = runSuite({ corpusDir: c.dir, configsDir: CONFIGS, quiet: true });
-    assert.equal(r1.exitCode, 2);
+    assert.equal(r1.exitCode, 1);   // mismatch (ts-000005) outranks unlabelled
     const by = Object.fromEntries(r1.results.map((x) => [x.vector.id, x.status]));
     assert.equal(by['ts-000003'], 'unlabelled'); assert.equal(by['ts-000005'], 'mismatch');
     assert.equal(by['ts-000010'], 'match'); assert.equal(by['ts-000011'], 'known-gap'); assert.equal(by['ts-000012'], 'gap-closed');
@@ -617,7 +617,7 @@ test('filters and CLI entry', () => {
     const r = runSuite({ corpusDir: c.dir, configsDir: CONFIGS, quiet: true, source: 'adversarial', guard: 'git' });
     assert.ok(r.results.every((x) => x.vector.source === 'adversarial'));
     const p = spawnSync(process.execPath, [path.join(ROOT, 'evals', 'run.mjs'), '--corpus', c.dir, '--configs', CONFIGS, '--quiet'], { encoding: 'utf8' });
-    assert.equal(p.status, 2);
+    assert.equal(p.status, 1);      // the fixture holds a deliberate mismatch
     assert.match(p.stdout, /unlabelled 1/);
   } finally { c.cleanup(); }
 });
@@ -917,7 +917,7 @@ test('mine: lang tag, fixture derivation, redaction, dedupe, merge with existing
     assert.deepEqual(w2.fixture, { exists: ['src/new.ts'] }); // later Write: touched earlier
     assert.ok(rows.every((v) => v.expected === null && v.source === 'mined' && v.lang === 'ts'));
     assert.ok(rows.every((v) => !JSON.stringify(v).includes(proj.dir)));
-    assert.ok(rows.every((v) => v.note === 'app 2026-08'));
+    assert.ok(rows.every((v) => v.note === `${path.basename(proj.dir)} 2026-08`));
     assert.equal(rows[0].id, vectorId('ts', 'Bash', { command: 'npx vitest run src/a.test.ts' }));
     assert.deepEqual(r.dropped, { secret: 1, 'sensitive-path': 1 });
     assert.equal(r.added, 4);
@@ -1332,7 +1332,7 @@ In `.github/workflows/harness.yml`, after the existing tests step in the `checks
           name: eval-results
           path: evals/results.json
 ```
-In `.claude/harness.json`, add to `checks`: `{ "name": "evals", "cmd": "node evals/run.mjs --quiet" }` and add `"evals"` to `guards.stop.checks`. Add `evals/results.json` to `.gitignore`.
+In `.claude/harness.json`, add to `checks`: `{ "name": "evals", "cmd": "node evals/run.mjs --quiet" }`, add `"evals"` to `guards.stop.checks`, and add `"evals/**/*.mjs"` to `project.sourceGlobs` so editing the runner arms the gates. Add `evals/results.json` to `.gitignore`.
 
 - [ ] **Step 4: Write the README**
 
@@ -1405,6 +1405,8 @@ Run: `node evals/mine.mjs`
 Expected: a count per language (ts, go, php, swift, none), drop counts, and the fifty longest vectors.
 
 - [ ] **Step 2: Review**
+
+Expect a lower yield than the raw call count: every command carrying a full 40-hex git SHA is dropped by the hex rule, and any command naming a token, secret, or key is dropped by design.
 
 Read the fifty longest and `grep -c` each language file. Spot-check twenty random lines per file for anything the redactor should have caught (`grep -iE 'token|secret|passw|key|@' evals/corpus/mined/*.jsonl` must return nothing). If anything slipped, add the pattern to `SECRET_PATTERNS` with a test, re-run the miner from a clean `mined/` directory, and repeat.
 
