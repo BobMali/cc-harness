@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GUARD_NAMES, isGuardEnabled } from './config.mjs';
+import { selectChecks } from './checks.mjs';
 
 export function templatesDir() {
   return path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'templates');
@@ -23,14 +24,19 @@ export function deepMergeSettings(existing, fragment) {
     for (const [k, v] of Object.entries(fragment)) out[k] = k in existing ? deepMergeSettings(existing[k], v) : v;
     return out;
   }
-  return existing === undefined ? fragment : existing;
+  return existing === undefined || existing === null ? fragment : existing;
 }
 
 export const DEFAULT_TYPES = ['feat', 'fix', 'docs', 'test', 'refactor', 'perf', 'build', 'ci', 'chore', 'revert'];
 
+const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 export function buildRegex(types, scopes) {
-  const scope = scopes.length ? `(\\((${scopes.join('|')})\\))?` : '(\\([a-z0-9-]+\\))?';
-  return `^(${types.join('|')})${scope}!?: [a-z](.{0,64}[^.])?$`;
+  if (!types.length) throw new Error('buildRegex: at least one commit type is required');
+  const t = types.map(escapeRegex);
+  const s = scopes.map(escapeRegex);
+  const scope = s.length ? `(\\((${s.join('|')})\\))?` : '(\\([a-z0-9-]+\\))?';
+  return `^(${t.join('|')})${scope}!?: [a-z](.{0,64}[^.])?$`;
 }
 
 function yamlStep(step, indent = '      ') {
@@ -49,7 +55,6 @@ function yamlStep(step, indent = '      ') {
 
 export function templateVars({ config, preset = {}, types, scopes, pluginVersion, projectName }) {
   const checks = config.checks;
-  const fast = checks.filter((c) => c.fast).map((c) => c.name);
   const commands = checks.length
     ? '```sh\n' + checks.map((c) => `${c.cmd.padEnd(44)} # ${c.name}${c.fast ? ' (fast)' : ''}`).join('\n') + '\n```'
     : '<!-- Build, test, lint, and run commands. Keep them copy-pasteable. -->';
@@ -59,14 +64,17 @@ export function templateVars({ config, preset = {}, types, scopes, pluginVersion
   }).join('\n');
   const ciSetup = (preset.ci?.setupSteps ?? []).map((s) => yamlStep(s)).join('\n');
   const rejectTrailers = config.guards.commit.rejectAttributionTrailers;
+  const qualityEnabled = isGuardEnabled(config, 'quality');
+  const stopEnabled = isGuardEnabled(config, 'stop');
+  const fastNames = qualityEnabled ? selectChecks(config, { scope: config.guards.quality.scope }).map((c) => c.name) : [];
   return {
     PROJECT_NAME: projectName,
     PRESET: config.preset,
     HARNESS_VERSION: pluginVersion,
     COMMANDS: commands,
     TEST_GLOBS: config.project.testGlobs.map((g) => `\`${g}\``).join(', ') || '(none configured)',
-    STOP_CHECKS: config.guards.stop.checks.join(', ') || '(none configured)',
-    FAST_CHECKS: fast.join(', ') || '(none configured)',
+    STOP_CHECKS: stopEnabled ? (config.guards.stop.checks.join(', ') || '(none configured)') : '(stop gate disabled)',
+    FAST_CHECKS: qualityEnabled ? (fastNames.join(', ') || '(none configured)') : '(quality gate disabled)',
     COMMIT_TYPES: types.join(' '),
     COMMIT_SCOPES: scopes.join(' '),
     COMMIT_SCOPES_LINE: scopes.length ? scopes.join(' ') : 'any lower-case word, e.g. `feat(api): ...`',

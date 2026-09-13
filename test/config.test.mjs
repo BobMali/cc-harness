@@ -68,6 +68,12 @@ test('validateConfig catches shape errors', () => {
   assert.deepEqual(validateConfig(DEFAULTS), []);
 });
 
+test('F2: checks[i].fast must be a boolean when present', () => {
+  const bad = mergeConfig(DEFAULTS, { checks: [{ name: 'a', cmd: 'true', fast: 1 }] });
+  const errs = validateConfig(bad);
+  assert.ok(errs.some((e) => /checks\[0\]\.fast must be a boolean/.test(e)), JSON.stringify(errs));
+});
+
 test('helpers', () => {
   const cfg = mergeConfig(DEFAULTS, { checks: [{ name: 'a', cmd: 'true' }, { name: 'b', cmd: 'true' }], guards: { git: { enabled: false } } });
   assert.equal(isGuardEnabled(cfg, 'git'), false);

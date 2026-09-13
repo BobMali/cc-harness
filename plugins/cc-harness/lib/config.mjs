@@ -118,6 +118,7 @@ export function validateConfig(c) {
     else if (names.has(ch.name)) errors.push(`duplicate check name "${ch.name}"`);
     else names.add(ch.name);
     if (typeof ch.cmd !== 'string' || !ch.cmd) errors.push(`checks[${i}].cmd must be a non-empty string`);
+    if ('fast' in ch && typeof ch.fast !== 'boolean') errors.push(`checks[${i}].fast must be a boolean`);
   });
   for (const g of GUARD_NAMES) {
     if (typeof c.guards?.[g]?.enabled !== 'boolean') errors.push(`guards.${g}.enabled must be a boolean`);
