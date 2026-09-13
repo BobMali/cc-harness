@@ -16,7 +16,9 @@ Tell the user which preset you detected and why. Let them override.
 ## Ask two things, once
 
 1. Commit scopes as a comma-separated list (for example `api,web,ci`). Empty means any scope matching lower-case letters, digits, and hyphens (`[a-z0-9-]+`) is accepted.
-2. Whether attribution trailers (Co-Authored-By, Claude-Session, "Generated with") should be rejected. Default yes. If no: after init, set `guards.commit.rejectAttributionTrailers` to `false` in `.claude/harness.json` **and** export `CC_HARNESS_REJECT_TRAILERS=0` wherever `githooks/commit-msg` runs (the user's shell profile, and the `commits` job's `env:` in `.github/workflows/harness.yml`). The `harness.json` key only changes the Claude commit guard and the generated `harness-commits.md` rule text — the git `commit-msg` hook and CI enforce the trailer check independently and default to rejecting them regardless of what `harness.json` says.
+2. Whether attribution trailers (Co-Authored-By, Claude-Session, "Generated with") should be rejected. Default yes. If no:
+   - Set `guards.commit.rejectAttributionTrailers` to `false` in `.claude/harness.json`. This only changes the Claude commit guard — it does **not** update the already-generated `harness-commits.md` rule text, which is rendered once at `init`/`sync-rules` time from whatever the config said then. Then run `node "${CLAUDE_PLUGIN_ROOT}/bin/harness.mjs" sync-rules --target "$CLAUDE_PROJECT_DIR"` (or tell the user to run `harness sync-rules`) to regenerate `harness-commits.md`; until then the rule still tells Claude to reject trailers.
+   - The git `commit-msg` hook and CI enforce the trailer check independently of `harness.json`, via the `CC_HARNESS_REJECT_TRAILERS` environment variable (default on). Don't set this yourself — tell the user to export `CC_HARNESS_REJECT_TRAILERS=0` in their own shell profile if they want the hook to stop rejecting trailers locally (note: that disables trailer rejection for every cc-harness repo on the machine, not just this one), and to separately add an `env:` block for it to the `commits` job in `.github/workflows/harness.yml` if they also want CI to agree — the shipped template has no `env:` block there by default.
 
 Do not ask about types unless the user brings it up; the default set is `feat fix docs test refactor perf build ci chore revert` (`--types` overrides it).
 
@@ -30,11 +32,11 @@ node "${CLAUDE_PLUGIN_ROOT}/bin/harness.mjs" init --target "$CLAUDE_PROJECT_DIR"
 
 Omit `--scopes` entirely when the user gave none — passing `--scopes` with an empty value makes the next flag get swallowed as the scopes value, since the installer just reads whatever token follows the flag.
 
-Then run it for real without `--dry-run`. The installer writes into `.claude/`, which the Bash sandbox may deny; if the command fails with "Operation not permitted", run it with the sandbox disabled, or ask the user to run it themselves by typing `!` followed by the same command.
+Then run it for real without `--dry-run`. The installer writes into `.claude/`, which the Bash sandbox may deny; if the command fails with "Operation not permitted", first ask the user to run it themselves by typing `!` followed by the same command, or fall back to running it with the sandbox disabled.
 
 If the installer refuses because `.claude/harness.json` or the regex file exists, do **not** add `--force` on your own. Show the refusal and ask.
 
-A local `--marketplace` path (the default when running from inside this repo, or any directory you pass) is resolved against the current working directory and written to `.claude/settings.local.json` (and appended to `.gitignore`); an `owner/repo` marketplace instead goes into the shared `.claude/settings.json`. Mention this if the user asks why two settings files changed.
+A local `--marketplace` path (the default when running from inside this repo, or any directory you pass) is resolved against the current working directory and written to `.claude/settings.local.json`, whose path (`.claude/settings.local.json`) is then appended as a line to `.gitignore`; an `owner/repo` marketplace instead goes into the shared `.claude/settings.json` and touches no `.gitignore`. Mention this if the user asks why two settings files changed.
 
 ## Refresh after a plugin update
 
