@@ -13,7 +13,8 @@ export function defaultExec(cmd, { cwd, timeoutMs = 540_000 } = {}) {
     env: { ...process.env, CI: process.env.CI ?? '1', FORCE_COLOR: '0', NO_COLOR: '1' },
     maxBuffer: 16 * 1024 * 1024,
   });
-  const output = (r.stdout ?? '') + (r.stderr ?? '') + (r.error ? `\n${r.error.message}` : '');
+  const partial = (r.stdout ?? '') + (r.stderr ?? '');
+  const output = r.error ? `check aborted: ${r.error.code ?? r.error.message}\n${partial}` : partial;
   return { status: r.status ?? 1, output };
 }
 

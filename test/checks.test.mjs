@@ -39,3 +39,9 @@ test('tail and formatFailure', () => {
   assert.match(s, /check "lint" failed \(exit 1\): eslint \./);
   assert.match(s, /Fix this before continuing\. Do not start new work\./);
 });
+
+test('defaultExec: a hung/aborted command surfaces the error up front', () => {
+  const r = defaultExec('sleep 5', { cwd: '/tmp', timeoutMs: 200 });
+  assert.notEqual(r.status, 0);
+  assert.ok(r.output.startsWith('check aborted: ETIMEDOUT'), r.output);
+});

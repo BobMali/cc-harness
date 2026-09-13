@@ -10,13 +10,23 @@ export function markerPath(dataDir, sessionId) {
 export function readMarker(dataDir, sessionId) {
   const f = markerPath(dataDir, sessionId);
   if (!fs.existsSync(f)) return null;
-  try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; }
+  try {
+    const parsed = JSON.parse(fs.readFileSync(f, 'utf8'));
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return { dirty: true, blocks: 0, files: [], corrupt: true };
+    }
+    return parsed;
+  } catch {
+    return { dirty: true, blocks: 0, files: [], corrupt: true };
+  }
 }
 
 export function writeMarker(dataDir, sessionId, marker) {
   const f = markerPath(dataDir, sessionId);
   fs.mkdirSync(path.dirname(f), { recursive: true });
-  fs.writeFileSync(f, JSON.stringify({ ...marker, updatedAt: Date.now() }));
+  const tmp = `${f}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify({ ...marker, updatedAt: Date.now() }));
+  fs.renameSync(tmp, f);
 }
 
 export function markDirty(dataDir, sessionId, relFile) {
