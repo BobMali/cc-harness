@@ -12,7 +12,7 @@ import { init, syncRules, parseInitArgs } from './init.mjs';
 const USAGE = `usage: harness <command>
 
   hook <PreToolUse|PostToolUse|Stop|SessionStart>   run guards for a hook event (stdin: hook JSON)
-  init [--preset ts|custom] [--types a,b] [--scopes a,b] [--marketplace owner/repo|path] [--force] [--dry-run] [--target dir]
+  init [--preset ts|custom] [--types a,b] [--scopes a,b] [--marketplace owner/repo|path] [--force] [--dry-run] [--target dir] [--name <project>]
   doctor [--target dir]
   sync-rules [--target dir]
   version
