@@ -6,6 +6,7 @@ import { loadConfig, isGuardEnabled } from './config.mjs';
 import { guardsFor } from './guards/index.mjs';
 import { pluginRoot, pluginVersion } from './meta.mjs';
 import { defaultExec } from './checks.mjs';
+import { diagnose } from './doctor.mjs';
 
 const USAGE = `usage: harness <command>
 
@@ -87,5 +88,21 @@ export async function runHook(event, io, overrides = {}) {
 
 function emit(io, obj) { if (obj) io.stdout.write(JSON.stringify(obj) + '\n'); }
 async function runInit(args, io) { return 0; }        // T6
-async function runDoctor(args, io) { return 0; }      // T5
+
+async function runDoctor(args, io) {
+  const target = path.resolve(argValue(args, '--target') ?? io.env.CLAUDE_PROJECT_DIR ?? process.cwd());
+  const loaded = loadConfig(target);
+  const report = diagnose({ projectDir: target, loaded, exec: defaultExec, fs, pluginVersion: pluginVersion() });
+  for (const f of report.findings) io.stdout.write(`${{ ok: '✔', warn: '⚠', error: '✖' }[f.level]} ${f.text}\n`);
+  io.stdout.write(`\n${report.summary}\n`);
+  return report.findings.some((f) => f.level === 'error') ? 1 : 0;
+}
+
+export function argValue(args, flag) {
+  const i = args.indexOf(flag);
+  if (i !== -1) return args[i + 1];
+  const eq = args.find((a) => a.startsWith(flag + '='));
+  return eq ? eq.slice(flag.length + 1) : undefined;
+}
+
 async function runSyncRules(args, io) { return 0; }   // T6
