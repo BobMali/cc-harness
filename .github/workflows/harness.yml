@@ -1,0 +1,33 @@
+name: harness
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: syntax
+        run: 'for f in plugins/cc-harness/bin/*.mjs plugins/cc-harness/lib/*.mjs plugins/cc-harness/lib/guards/*.mjs test/*.mjs test/helpers/*.mjs; do node --check "$f" || exit 1; done'
+      - name: tests
+        run: node --test test/*.test.mjs
+
+  commits:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check commit messages against githooks/conventional-regex.txt
+        run: |
+          set -e
+          for sha in $(git rev-list --no-merges "origin/${{ github.base_ref }}..HEAD"); do
+            git log -1 --format=%B "$sha" > /tmp/msg
+            sh githooks/commit-msg /tmp/msg || { echo "commit $sha rejected"; exit 1; }
+          done

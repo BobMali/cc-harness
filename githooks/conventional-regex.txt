@@ -1,0 +1,3 @@
+^(feat|fix|docs|test|refactor|build|ci|chore)(\((cli|guards|config|render|presets|skills|docs|ci|evals)\))?!?: [a-z](.{0,64}[^.])?$
+# types: feat fix docs test refactor build ci chore
+# scopes: cli guards config render presets skills docs ci evals
