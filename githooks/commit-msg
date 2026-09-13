@@ -1,0 +1,29 @@
+#!/bin/sh
+# cc-harness commit-msg hook. Enforces the regex in githooks/conventional-regex.txt.
+# Usage: githooks/commit-msg <message-file>     (git calls it this way)
+# Enable: git config core.hooksPath githooks
+set -eu
+root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+rules="$root/githooks/conventional-regex.txt"
+msgfile="$1"
+
+[ -f "$rules" ] || { echo "commit-msg: $rules not found" >&2; exit 1; }
+regex=$(head -n 1 "$rules" | tr -d '\r')
+[ -n "$regex" ] || { echo "commit-msg: $rules has no regex on line 1" >&2; exit 1; }
+types=$(sed -n 's/^# types: //p' "$rules")
+scopes=$(sed -n 's/^# scopes: //p' "$rules")
+subject=$(grep -v '^#' "$msgfile" | sed -n '1p' | tr -d '\r')
+
+if ! printf '%s\n' "$subject" | grep -Eq "$regex"; then
+  echo "commit-msg: subject \"$subject\" does not match the required format" >&2
+  echo "  regex:  $regex" >&2
+  [ -n "$types" ] && echo "  types:  $types" >&2
+  [ -n "$scopes" ] && echo "  scopes: $scopes" >&2
+  exit 1
+fi
+
+if [ "${CC_HARNESS_REJECT_TRAILERS:-1}" = "1" ] && grep -Eiq '^(co-authored-by|claude-session):|generated with .*claude' "$msgfile"; then
+  echo "commit-msg: attribution trailers (Co-Authored-By, Claude-Session, Generated with) are not allowed" >&2
+  exit 1
+fi
+exit 0

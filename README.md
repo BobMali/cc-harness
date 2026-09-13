@@ -97,3 +97,5 @@ harness version            # print the plugin version
 node --test test/*.test.mjs
 claude plugin validate plugins/cc-harness --strict
 ```
+
+This repository runs cc-harness on itself: `.claude/harness.json` uses the `custom` preset, and its rules, git hook, and CI workflow were produced by its own `init` (the CI check steps were filled in by hand because `init` renders them from the preset, not from a hand-written config).

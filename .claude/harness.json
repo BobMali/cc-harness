@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "preset": "custom",
+  "project": {
+    "markerFile": ".claude-plugin/marketplace.json",
+    "sourceGlobs": ["plugins/**/*.mjs", "plugins/**/*.json", "plugins/**/*.tmpl", "plugins/**/commit-msg", "evals/**/*.mjs"],
+    "testGlobs": ["test/**/*.test.mjs"]
+  },
+  "commands": {
+    "safe": ["node", "claude"],
+    "write": [{ "cmd": "node", "whenFlags": ["-e", "--eval", "-p", "--print"] }]
+  },
+  "checks": [
+    { "name": "syntax", "cmd": "for f in plugins/cc-harness/bin/*.mjs plugins/cc-harness/lib/*.mjs plugins/cc-harness/lib/guards/*.mjs test/*.mjs test/helpers/*.mjs; do node --check \"$f\" || exit 1; done", "fast": true },
+    { "name": "validate", "cmd": "claude plugin validate plugins/cc-harness --strict", "ifExists": "plugins/cc-harness/.claude-plugin/plugin.json", "fast": true },
+    { "name": "tests", "cmd": "node --test test/*.test.mjs" }
+  ],
+  "guards": { "stop": { "checks": ["syntax", "tests"] } }
+}
