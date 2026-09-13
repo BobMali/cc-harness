@@ -1,0 +1,32 @@
+{
+  "project": {
+    "markerFile": "package.json",
+    "sourceGlobs": ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "**/*.mjs", "**/*.cjs"],
+    "testGlobs": ["**/*.test.*", "**/*.spec.*", "**/__tests__/**"]
+  },
+  "commands": {
+    "safe": ["node", "tsc", "vitest", "jest", "eslint", "prettier", "tsx", "ts-node"],
+    "write": [
+      { "cmd": "prettier", "whenFlags": ["--write", "-w"] },
+      { "cmd": "eslint", "whenFlags": ["--fix"] },
+      { "cmd": "node", "whenFlags": ["-e", "--eval", "-p", "--print"] },
+      { "cmd": "tsx", "whenFlags": ["-e", "--eval"] }
+    ]
+  },
+  "checks": [
+    { "name": "typecheck", "cmd": "node_modules/.bin/tsc --noEmit", "ifExists": "tsconfig.json", "fast": true },
+    { "name": "lint", "cmd": "node_modules/.bin/eslint .", "ifExists": "node_modules/.bin/eslint", "fast": true },
+    { "name": "format", "cmd": "node_modules/.bin/prettier --check .", "ifExists": "node_modules/.bin/prettier", "fast": true },
+    { "name": "test", "cmd": "node_modules/.bin/vitest run", "ifExists": "node_modules/.bin/vitest" },
+    { "name": "test-jest", "cmd": "node_modules/.bin/jest --ci", "ifExists": "node_modules/.bin/jest" }
+  ],
+  "guards": {
+    "stop": { "checks": ["typecheck", "test", "test-jest"] }
+  },
+  "ci": {
+    "setupSteps": [
+      { "uses": "actions/setup-node@v4", "with": { "node-version": "20", "cache": "npm" } },
+      { "run": "npm ci" }
+    ]
+  }
+}
