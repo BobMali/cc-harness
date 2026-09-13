@@ -4,6 +4,10 @@ A preset is a JSON file in `plugins/cc-harness/presets/<name>.json`. It is merge
 
 The shipped `ts.json` is the worked example; each section below quotes it.
 
+## version
+
+The top-level `version` key must be `1` (`SUPPORTED_VERSION` in `config.mjs`). Any other value makes `.claude/harness.json` invalid: every guard goes inactive except a PreToolUse `ask`, and the preflight hook prints a warning at session start instead of the usual status block.
+
 ## project
 
 | key | meaning | ts.json |
@@ -25,7 +29,7 @@ An empty `testGlobs` disables the test guard entirely, not just its matching.
 | `write` | tool words that rewrite files. `whenFlags`: a write only when one of the flags is present. `unlessFlags`: a write unless one is present. Neither: always a write. Interpreters go here with their eval flags so `node -e "...writeFileSync('x.test.ts')"` prompts. | `prettier --write/-w`, `eslint --fix`, `node -e/--eval/-p/--print` |
 | `runnerWrappers` | words whose next word is the real tool | default: `npx pnpm yarn bunx bun npm` |
 
-The tool word is the basename of the first non-assignment token (`vendor/bin/phpunit` → `phpunit`; `FOO=1 env node` → `node`). After a wrapper, `run`, `exec`, `--`, and similar are skipped, so `npm run lint:fix` resolves to `lint:fix` (unknown → prompts) and `npm test` to `test` (built-in safe). Commands inside `$( )` or backticks are not inspected; the guard sees only top-level segments.
+The tool word is the basename of the first non-assignment token (`vendor/bin/phpunit` → `phpunit`; `FOO=1 env node` → `node`). After a wrapper, `run`, `exec`, `--`, and similar are skipped, so `npm run lint:fix` resolves to `lint:fix` (unknown → prompts) and `npm test` to `test` (built-in safe). The parser does not understand `$( )` or backticks: it still splits on `;`, `|`, and `&` inside them and inspects the fragments, so a destructive command inside a substitution is usually still seen, but a substitution's result is not.
 
 ## checks
 
@@ -42,7 +46,7 @@ Ordered, named commands run via `/bin/sh -c` with the project root as cwd.
 
 Each guard has `enabled`. Extra keys: `commit.regexFile`, `commit.rejectAttributionTrailers`, `quality.scope` (`fast` or `all`), `stop.checks` (names), `stop.maxBlocks` (0–7).
 
-`commit.rejectAttributionTrailers` only controls the Claude commit guard (and the trailer bullet in the generated `harness-commits.md` rule). The git `commit-msg` hook and CI enforce the trailer check independently, reading the `CC_HARNESS_REJECT_TRAILERS` environment variable (default `1`, i.e. reject); set `CC_HARNESS_REJECT_TRAILERS=0` in the hook's environment to keep the two in sync when you disable the config key.
+`commit.rejectAttributionTrailers` only controls the Claude commit guard. The generated `harness-commits.md` rule is a static file rendered once, at `init`/`sync-rules` time, from whatever the config said then — changing this key does not update it; run `harness sync-rules` afterward to regenerate it, or the rule keeps telling Claude to reject trailers regardless of the new setting (`doctor` won't flag the mismatch either — it only checks the rule's version stamp, not its content). The git `commit-msg` hook and CI enforce the trailer check independently, reading the `CC_HARNESS_REJECT_TRAILERS` environment variable (default `1`, i.e. reject); set `CC_HARNESS_REJECT_TRAILERS=0` in the hook's environment to keep the two in sync when you disable the config key.
 
 ## ci (preset only)
 
