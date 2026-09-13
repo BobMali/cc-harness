@@ -7,6 +7,7 @@ import { guardsFor } from './guards/index.mjs';
 import { pluginRoot, pluginVersion } from './meta.mjs';
 import { defaultExec } from './checks.mjs';
 import { diagnose } from './doctor.mjs';
+import { init, syncRules, parseInitArgs } from './init.mjs';
 
 const USAGE = `usage: harness <command>
 
@@ -87,7 +88,7 @@ export async function runHook(event, io, overrides = {}) {
 }
 
 function emit(io, obj) { if (obj) io.stdout.write(JSON.stringify(obj) + '\n'); }
-async function runInit(args, io) { return 0; }        // T6
+async function runInit(args, io) { return init(parseInitArgs(args, io.env), io); }
 
 async function runDoctor(args, io) {
   const target = path.resolve(argValue(args, '--target') ?? io.env.CLAUDE_PROJECT_DIR ?? process.cwd());
@@ -105,4 +106,4 @@ export function argValue(args, flag) {
   return eq ? eq.slice(flag.length + 1) : undefined;
 }
 
-async function runSyncRules(args, io) { return 0; }   // T6
+async function runSyncRules(args, io) { return syncRules({ targetDir: argValue(args, '--target') ?? io.env.CLAUDE_PROJECT_DIR ?? process.cwd() }, io); }
