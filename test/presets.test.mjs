@@ -29,3 +29,8 @@ test('every rules template starts with the version stamp line', () => {
   assert.ok(fs.existsSync(path.join(templatesDir(), 'ci.yml.tmpl')));
   assert.ok(fs.existsSync(path.join(templatesDir(), 'githooks', 'commit-msg')));
 });
+
+test('F1: the commits job excludes merge commits so a PR merge commit is not rejected', () => {
+  const t = fs.readFileSync(path.join(templatesDir(), 'ci.yml.tmpl'), 'utf8');
+  assert.match(t, /rev-list --no-merges/);
+});
