@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { evaluate } from '../plugins/cc-harness/lib/guards/stop.mjs';
-import { markDirty, readMarker } from '../plugins/cc-harness/lib/session.mjs';
+import { markDirty, readMarker, markerPath } from '../plugins/cc-harness/lib/session.mjs';
 import { DEFAULTS, mergeConfig } from '../plugins/cc-harness/lib/config.mjs';
 import { makeProject, makeDataDir } from './helpers/project.mjs';
 
@@ -54,5 +54,16 @@ test('sessions are isolated', () => {
   try {
     markDirty(d.dir, 'other', 'a.ts');
     assert.equal(run(p, d, cfg(), execFailing(new Set(['tests'])), 'sess'), null);
+  } finally { p.cleanup(); d.cleanup(); }
+});
+
+test('a corrupt marker fails closed: stop gate blocks rather than releasing', () => {
+  const p = makeProject({}); const d = makeDataDir();
+  try {
+    markDirty(d.dir, 'sess', 'a.ts');
+    fs.writeFileSync(markerPath(d.dir, 'sess'), '{not json');
+    const exec = execFailing(new Set(['tests']));
+    const dec = run(p, d, cfg(), exec);
+    assert.equal(dec.kind, 'block');
   } finally { p.cleanup(); d.cleanup(); }
 });
