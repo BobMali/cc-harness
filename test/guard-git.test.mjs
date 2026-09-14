@@ -12,6 +12,7 @@ test('destructive git commands ask', () => {
     'git stash drop', 'git stash clear', 'git -C /x push -f', 'cd /x && git reset --hard',
     'git --git-dir /tmp/x reset --hard', 'git --work-tree /tmp/x clean -fd',
     'git push origin +main', 'git branch -Df feature', 'git branch --delete --force feature',
+    'git --attr-source HEAD reset --hard',
   ]) {
     const d = bash(c);
     assert.equal(d?.kind, 'ask', `expected ask for: ${c}`);
@@ -25,6 +26,10 @@ test('ordinary git commands pass', () => {
     'git restore --staged a.ts', 'git clean -n', 'git push', 'git push --force-with-lease', 'git branch -d merged',
     'git stash', 'git stash pop', 'git log --oneline', 'echo "git reset --hard"',
     'git push origin main', 'git branch --delete merged',
+    // Inert: git has no space-form value for --exec-path, so a bare `--exec-path`
+    // prints the current exec path and exits(0) before "reset --hard" ever runs
+    // (verified against real git); the guard must not treat it as destructive.
+    'git --exec-path reset --hard',
   ]) {
     assert.equal(bash(c), null, `expected pass for: ${c}`);
   }
