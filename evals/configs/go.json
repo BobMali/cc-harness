@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "preset": "custom",
+  "project": { "markerFile": "go.mod", "sourceGlobs": ["**/*.go"], "testGlobs": ["**/*_test.go"] },
+  "commands": {
+    "safe": ["go", "gofmt", "goimports", "golangci-lint", "gremlins"],
+    "write": [{ "cmd": "gofmt", "whenFlags": ["-w"] }, { "cmd": "goimports", "whenFlags": ["-w"] }]
+  },
+  "checks": [
+    { "name": "fmt", "cmd": "test -z \"$(gofmt -l .)\"", "fast": true },
+    { "name": "vet", "cmd": "go vet ./...", "fast": true },
+    { "name": "test", "cmd": "go test ./..." }
+  ],
+  "guards": { "stop": { "checks": ["vet", "test"] } }
+}
