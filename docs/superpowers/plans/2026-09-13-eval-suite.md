@@ -55,7 +55,7 @@ test/fixtures/evals/               synthetic corpus, configs, and a transcript
 
 ---
 
-### Task E0: Export the guard loop, eval configs, README stub
+### Task 0 (E0): Export the guard loop, eval configs, README stub
 
 **Files:**
 - Modify: `plugins/cc-harness/lib/cli.mjs`
@@ -230,7 +230,7 @@ git commit -m "feat(evals): export the guard loop and add eval configs"
 
 ---
 
-### Task E1: Corpus I/O and redaction
+### Task 1 (E1): Corpus I/O and redaction
 
 **Files:**
 - Create: `evals/lib/corpus.mjs`, `evals/lib/redact.mjs`
@@ -501,7 +501,7 @@ git commit -m "feat(evals): add corpus io and redaction"
 
 ---
 
-### Task E2: The runner
+### Task 2 (E2): The runner
 
 **Files:**
 - Create: `evals/run.mjs`, `evals/lib/report.mjs`
@@ -836,7 +836,7 @@ git commit -m "feat(evals): add the corpus runner and report"
 
 ---
 
-### Task E3: The miner
+### Task 3 (E3): The miner
 
 **Files:**
 - Create: `evals/mine.mjs`
@@ -1090,7 +1090,7 @@ git commit -m "feat(evals): add the transcript miner"
 
 ---
 
-### Task E4: The adversarial corpus
+### Task 4 (E4): The adversarial corpus
 
 **Files:**
 - Create: `evals/corpus/adversarial/test.jsonl`, `commit.jsonl`, `git.jsonl`, `quality.jsonl`
@@ -1260,7 +1260,7 @@ git commit -m "test(evals): add the adversarial corpus"
 
 ---
 
-### Task E5: CLI sampling, CI, dogfood, README
+### Task 5 (E5): CLI sampling, CI, dogfood, README
 
 **Files:**
 - Modify: `evals/run.mjs` (`--via cli --sample N`), `evals/README.md`
@@ -1397,7 +1397,7 @@ git commit -m "feat(evals): add cli sampling, ci step, dogfood check, and docs"
 
 ---
 
-### Task E6: Mine the real corpus (controller)
+### Task 6 (E6): Mine the real corpus (controller)
 
 Run by the controller on the user's machine; not a subagent task.
 
