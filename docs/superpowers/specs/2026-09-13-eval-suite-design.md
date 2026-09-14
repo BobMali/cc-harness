@@ -143,10 +143,19 @@ Redaction, in order:
 
 1. Replace the `cwd` prefix with `.` inside commands and paths; then any
    remaining `/Users/<name>` or `/home/<name>` with `~`.
-2. Drop the vector if the payload matches any of: `token`, `secret`,
-   `password`, `api[_-]?key`, `Authorization:`, a URL with `user:pass@`,
-   `-----BEGIN`, or a bare run of 32+ hex or base64 characters.
-3. Drop vectors that reference `.ssh`, `.gnupg`, `.env`, or `.npmrc`.
+2. Drop the vector if the payload matches any of: the words `token`, `secret`,
+   `password`, `api[_-]?key` (letter boundaries, so `tokenizer` survives),
+   `Authorization:`, a URL with `user:pass@` or with 20+ characters of
+   userinfo before `@`, `-u user:pass` / `--user user:pass`, a `-p<password>`
+   argument to `login`, `mysql`, `mysqldump`, `mariadb`, `sshpass`, or
+   `smbclient`, `-----BEGIN`, a bare run of 32+ hex characters, a run of 32+
+   base64 characters containing a digit, or a vendor-prefixed key
+   (`AKIA/ASIA` + 16, `ghp_/gho_/ghu_/ghs_/ghr_`, `github_pat_`, `xox[abprs]-`,
+   `sk-`, `sk_live_/sk_test_`, `glpat-`, `AIza` + 35).
+3. Drop vectors that reference `.ssh`, `.gnupg`, `.aws`, `.kube`,
+   `.docker/config.json`, `.netrc`, `.git-credentials`, `.npmrc`, `.env` or
+   `.env.*`, an `id_rsa`/`id_dsa`/`id_ecdsa`/`id_ed25519` file, or a `.pem`,
+   `.p12`, or `.pfx` file (paths, not contents; conservative by design).
 4. Truncate commands over 2,000 characters. Heredoc bodies over 40 lines keep
    the first and last five lines with a `# … <n> lines elided …` marker line
    between; the guards read only the marker and terminator.
