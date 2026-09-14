@@ -1201,7 +1201,7 @@ Write a small loop or script in the scratchpad to stamp ids; do not commit the s
 | `git commit --amend --no-edit` | pass | amend without message |
 | `git commit --amend -m "bad"` | deny/commit | amend with bad message |
 | `git -C . commit -m "bad message"` | deny/commit | git -C global |
-| `git --git-dir .git commit -m "bad message"` | deny/commit, known_gap | --git-dir separate value (deferred T3) |
+| `git --git-dir .git commit -m "bad message"` | deny/commit | --git-dir separate value (closed in the final wave) |
 | `git commit --no-verify -m "bad message"` | deny/commit | no-verify still denied |
 | `git commit -m "feat: ok" -m "Co-Authored-By: x <x@y>"` | deny/commit | trailer |
 | `git commit -m "feat: ok" -m "co-authored-by: x <x@y>"` | deny/commit | trailer lower-case |
@@ -1214,7 +1214,7 @@ Write a small loop or script in the scratchpad to stamp ids; do not commit the s
 | `git commit -m "feat: trailing."` | deny/commit | trailing period |
 | `git commit -m "feat(api): scoped"` | pass | any lower-case scope in eval regex |
 | `cat <<EOF > note.txt\nfeat: decoy\nEOF\ngit commit -F - <<EOF2\nbad message\nEOF2` | deny/commit | decoy heredoc |
-| `git commit -Fmsg.txt` | pass, known_gap | attached -F false deny (deferred T3) |
+| `git commit -Fmsg.txt` | pass | attached -F reads the file; absent in the fixture → null → pass (closed in the final wave) |
 | `echo "bad message" \| git commit -F -` | pass | structurally invisible; hook enforces |
 | `git status` | pass | not a commit |
 
@@ -1224,7 +1224,9 @@ ask/git: `git reset --hard`, `git reset --hard HEAD~1`, `git checkout .`, `git c
 
 pass: `git status`, `git reset HEAD~1`, `git reset --soft HEAD~1`, `git checkout -b feature`, `git checkout main`, `git restore --staged src/a.ts`, `git clean -n`, `git push`, `git push --force-with-lease`, `git branch -d merged`, `git stash`, `git stash pop`, `git log --oneline`, `echo "git reset --hard"`, `git commit -m "docs: mention git reset --hard"`.
 
-ask/git with `known_gap` (all deferred in the build ledger, T2): `git push origin +main`, `git branch --delete --force feature`, `git branch -Df feature`, `git switch -f main`, `bash -c "git reset --hard"`, `git checkout src/a.ts`, `git restore src/a.ts`.
+ask/git (closed in the final wave, plain expectations): `git push origin +main`, `git branch --delete --force feature`, `git branch -Df feature`.
+
+ask/git with `known_gap` (still deferred): `git switch -f main`, `bash -c "git reset --hard"`, `git checkout src/a.ts`, `git restore src/a.ts`.
 
 Notes name the form: "spec list", "near miss", "refspec force", "delete force long", "delete force short", "switch force", "shell wrapper", "checkout file", "restore file".
 
