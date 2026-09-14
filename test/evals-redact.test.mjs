@@ -17,8 +17,9 @@ test('secrets drop the vector', () => {
     'cat id_rsa -----BEGIN RSA', 'echo deadbeefdeadbeefdeadbeefdeadbeef', 'echo QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo=', 'set password=x', 'API_KEY=1 node x',
     'curl -u user:pass https://h', 'curl --user alice:hunter2 https://h',
     'git clone https://ghp_abcdefghijklmnopqrstuvwxyzABCDEFghi@github.com/x/y.git',
-    'docker login -p hunter2 registry', 'mysql -u root -phunter2 db',
+    'docker login -p hunter2 registry', 'mysql -u root -phunter2 db', 'sshpass -p hunter2 ssh host',
     'export AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE', 'echo xoxb-1234567890-abcdefghij', 'echo sk-abcdefghijklmnopqrstuvwxyz',
+    'curl -uuser:pass https://h',
   ]) assert.equal(redact(c, { cwd }).dropped, 'secret', c);
 });
 
@@ -41,6 +42,9 @@ test('ordinary commands survive', () => {
     'git push -u origin main', 'mkdir -p x', 'docker run -p 8080:80 img',
     'curl -u alice https://h', 'curl -u https://x', 'git fetch ssh://git@host', 'git remote add origin git@github.com:x/y.git',
     'cp -p a b', 'git log -p', 'psql -p 5432',
+    'cat login.log && docker run -p 8080:80 img', 'grep login access.log; docker run -p 3000:3000 app',
+    'npm run login-test -- -p 8080:80', 'echo mariadb-cluster status; git log -p src/', 'cat mysql-notes.txt && git log -p src/',
+    'curl -u "$USER" https://h',
   ]) assert.equal(redact(c, { cwd }).dropped, null, c);
 });
 
