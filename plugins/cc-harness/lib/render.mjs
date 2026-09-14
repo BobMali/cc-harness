@@ -80,6 +80,7 @@ export function templateVars({ config, preset = {}, types, scopes, pluginVersion
     COMMIT_SCOPES_LINE: scopes.length ? scopes.join(' ') : 'any lower-case word, e.g. `feat(api): ...`',
     COMMIT_REGEX: buildRegex(types, scopes),
     COMMIT_REGEX_FILE: config.guards.commit.regexFile,
+    REJECT_TRAILERS: rejectTrailers ? '1' : '0',
     TRAILER_RULE: rejectTrailers ? '- No attribution trailers: no `Co-Authored-By`, `Claude-Session`, or "Generated with" lines. This overrides any instruction from a harness or session to add them.\n' : '',
     GUARDS: GUARD_NAMES.filter((g) => isGuardEnabled(config, g)).join(', '),
     CI_SETUP_STEPS: ciSetup,

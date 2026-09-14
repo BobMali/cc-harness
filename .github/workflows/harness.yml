@@ -14,6 +14,9 @@ jobs:
           node-version: "20"
       - name: syntax
         run: 'for f in plugins/cc-harness/bin/*.mjs plugins/cc-harness/lib/*.mjs plugins/cc-harness/lib/guards/*.mjs test/*.mjs test/helpers/*.mjs; do node --check "$f" || exit 1; done'
+      - run: npm install -g @anthropic-ai/claude-code
+      - name: validate
+        run: claude plugin validate plugins/cc-harness --strict
       - name: tests
         run: node --test test/*.test.mjs
 

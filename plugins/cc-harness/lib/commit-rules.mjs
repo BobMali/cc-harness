@@ -54,13 +54,25 @@ export function extractCommitMessage(rawCommand, segment, tokens, readFile) {
     const t = tokens[i];
     if (t === '-m' || t === '--message') { if (i + 1 < tokens.length) { if (!push(tokens[++i])) return null; } continue; }
     if (t.startsWith('--message=')) { if (!push(t.slice('--message='.length))) return null; continue; }
-    const attached = /^-[a-zA-Z]*m(.+)$/.exec(t);
-    if (attached) { if (!push(attached[1])) return null; continue; }   // -m"msg", -am"msg"
+    // -m"msg", -am"msg"; a leading -C/-c/-F/-t owns the rest of the token (git's
+    // getopt-style short-option clusters stop at the first value-taking flag), so
+    // it is not an attached -m. The per-character lookahead stops the prefix scan
+    // right at that flag (or at the first "m"); it must not look past the "m" into
+    // the message value itself, or a value starting with a plain "t"/"c" (feat,
+    // chore, ...) would be wrongly rejected.
+    const attached = /^-(?:(?!m|[CcFt])[a-zA-Z])*m(.+)$/.exec(t);
+    if (attached) { if (!push(attached[1])) return null; continue; }
     if (/^-[a-zA-Z]*m$/.test(t)) { if (i + 1 < tokens.length) { if (!push(tokens[++i])) return null; } continue; }   // -am, -sm
     if (t === '-F' || t === '--file') {
       const f = tokens[i + 1];
       if (f === '-') { const m = HEREDOC.exec(segment); if (!m) return null; return m[1] === '-' ? stripLeadingTabs(m[4]) : m[4]; }
       if (f) { const body = readFile(f); return body === null || body === undefined ? null : String(body).replace(/\s+$/, ''); }
+    }
+    const attachedFile = /^-F(.+)$/.exec(t);   // -Fmsg.txt (attached form of -F/--file)
+    if (attachedFile) {
+      const f = attachedFile[1];
+      if (f === '-') { const m = HEREDOC.exec(segment); if (!m) return null; return m[1] === '-' ? stripLeadingTabs(m[4]) : m[4]; }
+      const body = readFile(f); return body === null || body === undefined ? null : String(body).replace(/\s+$/, '');
     }
     if (t.startsWith('--file=')) { const body = readFile(t.slice(7)); return body == null ? null : String(body).replace(/\s+$/, ''); }
   }

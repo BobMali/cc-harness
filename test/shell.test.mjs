@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { splitSegments, tokenize, resolveTool, redirectTargets, isWrite, isSafe } from '../plugins/cc-harness/lib/shell.mjs';
+import { splitSegments, tokenize, resolveTool, redirectTargets, isWrite, isSafe, gitSubcommand } from '../plugins/cc-harness/lib/shell.mjs';
 import { DEFAULTS, mergeConfig } from '../plugins/cc-harness/lib/config.mjs';
 
 const W = ['npx', 'pnpm', 'yarn', 'bunx', 'bun', 'npm'];
@@ -96,4 +96,12 @@ test('isSafe: builtin list, config list, non-destructive git subcommands', () =>
   // F1: global opts like -C <dir> take a value and must not be mistaken for the subcommand
   assert.equal(isSafe({ word: 'git', args: ['-C', '/repo', 'diff', 'x.test.ts'] }, cfg), true);
   assert.equal(isSafe({ word: 'git', args: ['-C', '/repo', 'checkout', 'x.test.ts'] }, cfg), false);
+});
+
+test('gitSubcommand consumes a value for space-form globals, not just the = form', () => {
+  assert.deepEqual(gitSubcommand(['--git-dir', '/x', 'commit', '-m', 'x']), { sub: 'commit', rest: ['-m', 'x'] });
+  assert.deepEqual(gitSubcommand(['--work-tree=/x', 'reset', '--hard']), { sub: 'reset', rest: ['--hard'] });
+  assert.deepEqual(gitSubcommand(['--namespace', 'ns', 'branch', '-D', 'x']), { sub: 'branch', rest: ['-D', 'x'] });
+  assert.deepEqual(gitSubcommand(['--exec-path', '/bin', 'push', '--force']), { sub: 'push', rest: ['--force'] });
+  assert.deepEqual(gitSubcommand(['--config-env', 'x=y', 'clean', '-f']), { sub: 'clean', rest: ['-f'] });
 });

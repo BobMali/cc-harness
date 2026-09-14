@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { DEFAULTS, mergeConfig, loadPreset, loadConfig, defaultPresetsDir } from './config.mjs';
 import { render, deepMergeSettings, buildRegex, templateVars, templatesDir, DEFAULT_TYPES } from './render.mjs';
@@ -10,13 +11,25 @@ const PLUGIN_KEY = 'cc-harness@cc-harness';
 const MARKET = 'cc-harness';
 const LOCAL_SETTINGS = '.claude/settings.local.json';
 
-export function defaultMarketplace() {
-  const candidate = path.resolve(pluginRoot(), '..', '..');
-  return fs.existsSync(path.join(candidate, '.claude-plugin', 'marketplace.json')) ? candidate : 'malek/cc-harness';
+// candidateDir is an override seam for tests: it defaults to the real "am I checked
+// out inside a marketplace" resolution, but this repo dogfoods cc-harness on itself
+// (it has its own .claude-plugin/marketplace.json), so a test that wants to exercise
+// the known_marketplaces.json fallback below must point candidateDir somewhere else.
+export function defaultMarketplace({ knownMarketplacesFile, candidateDir } = {}) {
+  const candidate = candidateDir ?? path.resolve(pluginRoot(), '..', '..');
+  if (fs.existsSync(path.join(candidate, '.claude-plugin', 'marketplace.json'))) return candidate;
+  const file = knownMarketplacesFile ?? path.join(os.homedir(), '.claude', 'plugins', 'known_marketplaces.json');
+  try {
+    const known = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const source = known?.['cc-harness']?.source;
+    if (source?.source === 'github' && source.repo) return source.repo;
+    if (source?.source === 'directory' && source.path) return source.path;
+  } catch { /* no known_marketplaces.json, unreadable, or invalid JSON: fall through */ }
+  return 'malek/cc-harness';
 }
 
 export function parseInitArgs(args, env) {
-  const val = (flag) => { const i = args.indexOf(flag); if (i !== -1) return args[i + 1]; const eq = args.find((a) => a.startsWith(flag + '=')); return eq ? eq.slice(flag.length + 1) : undefined; };
+  const val = (flag) => { const i = args.indexOf(flag); if (i !== -1) { const v = args[i + 1]; return v !== undefined && !v.startsWith('--') ? v : undefined; } const eq = args.find((a) => a.startsWith(flag + '=')); return eq ? eq.slice(flag.length + 1) : undefined; };
   const list = (s, dflt) => (s === undefined ? dflt : s.split(',').map((x) => x.trim()).filter(Boolean));
   const targetDir = path.resolve(val('--target') ?? env.CLAUDE_PROJECT_DIR ?? process.cwd());
   const types = list(val('--types'), DEFAULT_TYPES);
@@ -34,13 +47,33 @@ export function parseInitArgs(args, env) {
 
 const isRepo = (m) => /^[\w-]+\/[\w.-]+$/.test(m);
 
+// Generic runners and shell keywords: allowing "Bash(<word>:*)" for one of these
+// would allow far more than the specific check that happened to start with it.
+const GENERIC_FIRST_WORDS = new Set(['sh', 'bash', 'zsh', 'node', 'npm', 'npx', 'pnpm', 'yarn', 'bun', 'bunx', 'for', 'if', 'while', 'test', '[', 'env']);
+const SHELL_SPECIAL_CHARS = /[;|&$(){}]/;
+const firstWord = (cmd) => String(cmd).trim().split(/\s+/)[0] ?? '';
+const cmdBasename = (w) => w.slice(w.lastIndexOf('/') + 1);
+
 function permissionFragment(config) {
   const allow = new Set(['Bash(git status:*)', 'Bash(git diff:*)', 'Bash(git log:*)', 'Bash(git show:*)', 'Bash(git branch:*)']);
-  for (const c of config.checks) allow.add(`Bash(${c.cmd.split(/\s+/)[0]}:*)`);
+  const writeCmds = new Set(config.commands.write.map((w) => w.cmd));
+  for (const c of config.checks) {
+    const fw = firstWord(c.cmd);
+    if (!fw || GENERIC_FIRST_WORDS.has(fw) || SHELL_SPECIAL_CHARS.test(fw)) continue;
+    if (writeCmds.has(cmdBasename(fw))) continue;
+    allow.add(`Bash(${fw}:*)`);
+  }
   const ask = new Set(['Bash(git push:*)', 'Bash(rm:*)']);
   for (const w of config.commands.write) {
-    if (w.whenFlags) for (const f of w.whenFlags) ask.add(`Bash(${w.cmd} ${f}:*)`);
-    else ask.add(`Bash(${w.cmd}:*)`);
+    if (w.whenFlags) {
+      for (const f of w.whenFlags) {
+        ask.add(`Bash(${w.cmd} ${f}:*)`);
+        for (const c of config.checks) {
+          const fw = firstWord(c.cmd);
+          if (cmdBasename(fw) === w.cmd) ask.add(`Bash(${fw} ${f}:*)`);
+        }
+      }
+    } else ask.add(`Bash(${w.cmd}:*)`);
   }
   const deny = [
     'Read(**/.env)', 'Read(**/.env.*)', 'Edit(**/.env)', 'Edit(**/.env.*)',
@@ -56,7 +89,15 @@ export function planInit(opts) {
   const version = opts.pluginVersion ?? pluginVersion();
   const preset = opts.preset === 'custom' ? {} : loadPreset(opts.preset, presetsDir);
   if (preset === null) throw new Error(`unknown preset "${opts.preset}"`);
-  const config = mergeConfig(mergeConfig(DEFAULTS, preset), { preset: opts.preset });
+  const presetConfig = mergeConfig(mergeConfig(DEFAULTS, preset), { preset: opts.preset });
+  // Reflect the consumer's existing .claude/harness.json (e.g. a hand-edited
+  // rejectAttributionTrailers or regexFile) so a second `init --force` and
+  // every `sync-rules` keep honouring it instead of silently resetting it.
+  const loaded = loadConfig(opts.targetDir, { presetsDir });
+  // Only reuse the existing file when it was written for the same preset the caller
+  // is (re-)initing with; a `--preset` switch should not inherit the old preset's
+  // checks/commands/permissions just because a valid harness.json already exists.
+  const config = loaded.status === 'ok' && loaded.config.preset === opts.preset ? loaded.config : presetConfig;
   const vars = templateVars({ config, preset, types: opts.types, scopes: opts.scopes, pluginVersion: version, projectName: opts.projectName });
   const tpl = (rel) => fs.readFileSync(path.join(tdir, rel), 'utf8');
   const exists = (rel) => fs.existsSync(path.join(opts.targetDir, rel));
@@ -90,7 +131,7 @@ export function planInit(opts) {
     writes.push({ rel, content: render(tpl(`rules/harness-${n}.md.tmpl`), vars), action: exists(rel) ? 'overwrite' : 'create' });
   }
 
-  writes.push({ rel: 'githooks/commit-msg', content: tpl('githooks/commit-msg'), action: exists('githooks/commit-msg') ? 'overwrite' : 'create', mode: 0o755 });
+  writes.push({ rel: 'githooks/commit-msg', content: render(tpl('githooks/commit-msg.tmpl'), vars), action: exists('githooks/commit-msg') ? 'overwrite' : 'create', mode: 0o755 });
   const regexRel = config.guards.commit.regexFile;
   if (exists(regexRel) && !opts.force) refusals.push(`${regexRel} exists (you may have edited it); pass --force to overwrite it`);
   writes.push({ rel: regexRel, content: render(tpl('githooks/conventional-regex.txt.tmpl'), vars), action: exists(regexRel) ? 'overwrite' : 'create' });
@@ -167,7 +208,7 @@ export function syncRules(opts, io) {
   }
   const tdir = opts.templatesDir ?? templatesDir();
   const writes = RULE_NAMES.map((n) => ({ rel: `.claude/rules/harness-${n}.md`, content: render(fs.readFileSync(path.join(tdir, 'rules', `harness-${n}.md.tmpl`), 'utf8'), vars), action: 'overwrite' }));
-  writes.push({ rel: 'githooks/commit-msg', content: fs.readFileSync(path.join(tdir, 'githooks', 'commit-msg'), 'utf8'), action: 'overwrite', mode: 0o755 });
+  writes.push({ rel: 'githooks/commit-msg', content: render(fs.readFileSync(path.join(tdir, 'githooks', 'commit-msg.tmpl'), 'utf8'), vars), action: 'overwrite', mode: 0o755 });
   applyWrites(targetDir, writes);
   io.stdout.write(`cc-harness sync-rules: refreshed ${writes.length} files to v${version}\n`);
   return 0;

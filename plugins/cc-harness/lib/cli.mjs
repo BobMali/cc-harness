@@ -60,7 +60,7 @@ export async function runHook(event, io, overrides = {}) {
     return 0;
   }
   const config = loaded.config;
-  if (config.project.markerFile && !fs.existsSync(path.join(projectDir, config.project.markerFile))) return 0;
+  if (event !== 'SessionStart' && config.project.markerFile && !fs.existsSync(path.join(projectDir, config.project.markerFile))) return 0;
 
   const ctx = {
     event, input, config, projectDir,
@@ -101,7 +101,7 @@ async function runDoctor(args, io) {
 
 export function argValue(args, flag) {
   const i = args.indexOf(flag);
-  if (i !== -1) return args[i + 1];
+  if (i !== -1) { const v = args[i + 1]; return v !== undefined && !v.startsWith('--') ? v : undefined; }
   const eq = args.find((a) => a.startsWith(flag + '='));
   return eq ? eq.slice(flag.length + 1) : undefined;
 }

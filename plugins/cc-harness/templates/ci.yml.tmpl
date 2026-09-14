@@ -20,6 +20,8 @@ jobs:
         with:
           fetch-depth: 0
       - name: Check commit messages against githooks/conventional-regex.txt
+        env:
+          CC_HARNESS_REJECT_TRAILERS: "{{REJECT_TRAILERS}}"
         run: |
           set -e
           for sha in $(git rev-list --no-merges "origin/${{ github.base_ref }}..HEAD"); do

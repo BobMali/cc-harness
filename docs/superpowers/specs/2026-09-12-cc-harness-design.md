@@ -115,10 +115,11 @@ Presence of the file turns the harness on. Preset defaults are merged under it; 
 - `write[]` entries also accept `unlessFlags` (e.g. a formatter that is read-only with `--check`).
 - Presets are plain JSON files in `presets/`; `docs/presets.md` walks every key using `ts.json` as the worked example.
 - Built-in safe list (always merged): `cat head tail less grep rg wc ls stat file realpath basename dirname sort uniq cut tr diff cmp shasum echo printf true test`.
+- `guards.commit.regexFile` is not just read by the commit guard: `init` and `sync-rules` render it into the git `commit-msg` hook and into the CI commits job, so a custom path stays wired end to end.
 
 ### 3. Guard behaviour
 
-Shared preamble: read stdin JSON, project root = `CLAUDE_PROJECT_DIR`, load config. No config, marker file absent, or guard disabled → exit 0, no output. PreToolUse answers with `hookSpecificOutput.permissionDecision`; PostToolUse and Stop with top-level `decision:"block"`.
+Shared preamble: read stdin JSON, project root = `CLAUDE_PROJECT_DIR`, load config. No config → exit 0, no output. Marker file absent → every guard stands down except the SessionStart preflight, which reports it. Guard disabled → exit 0, no output. PreToolUse answers with `hookSpecificOutput.permissionDecision`; PostToolUse and Stop with top-level `decision:"block"`.
 
 | Guard | Event / matcher | Behaviour | Outcome |
 |---|---|---|---|

@@ -186,11 +186,15 @@ export function isWrite(tokens, word, writeCommands = []) {
   return false;
 }
 
-// git [global opts] <subcommand> [args]; global opts like -C <dir> and -c k=v take a value
+// git [global opts] <subcommand> [args]; global opts like -C <dir>, -c k=v, and the
+// long space-form globals (--git-dir <dir>, --work-tree <dir>, --namespace <ns>,
+// --exec-path <path>, --config-env <name>=<envvar>) take a value. The `=` form
+// (--work-tree=/x) is a single token and needs no special handling here.
+const GIT_GLOBAL_VALUE_OPTS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--exec-path', '--config-env']);
 export function gitSubcommand(args) {
   let i = 0;
   while (i < args.length && args[i].startsWith('-')) {
-    if (args[i] === '-C' || args[i] === '-c') i += 2; else i += 1;
+    if (GIT_GLOBAL_VALUE_OPTS.has(args[i])) i += 2; else i += 1;
   }
   return { sub: args[i] ?? '', rest: args.slice(i + 1) };
 }

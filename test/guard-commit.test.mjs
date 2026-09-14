@@ -38,6 +38,8 @@ test('invalid commits deny with the format hint', () => {
     assert.equal(run(p, 'git commit -m"bad message"')?.kind, 'deny');
     // F4: the $(cat <<EOF ... EOF) idiom, once expanded, still validates the resulting message
     assert.equal(run(p, 'git commit -m "$(cat <<\'EOF\'\nbad message\nEOF\n)"')?.kind, 'deny');
+    // F5: --git-dir <dir> (space form) must not be mistaken for the subcommand
+    assert.equal(run(p, 'git --git-dir .git commit -m "bad message"')?.kind, 'deny');
   } finally { p.cleanup(); }
 });
 

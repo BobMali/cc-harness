@@ -5,7 +5,8 @@ export const RULE_NAMES = ['testing', 'done', 'commits', 'models', 'harness'];
 export const NODE_FLOOR = 18;
 
 export function ruleStamp(text) {
-  const m = /^<!--\s*cc-harness:\s*v([0-9][^\s]*)\s*-->/m.exec(String(text ?? ''));
+  const stripped = String(text ?? '').replace(/^\uFEFF/, '');
+  const m = /^<!--\s*cc-harness:\s*v([0-9][^\s]*)\s*-->/.exec(stripped);
   return m ? m[1] : null;
 }
 
@@ -38,7 +39,7 @@ export function diagnose({ projectDir, loaded, exec, fs, pluginVersion, nodeVers
     if (!exists('githooks/commit-msg')) warn('githooks/commit-msg not found; run /cc-harness:init, then: git config core.hooksPath githooks');
     else {
       const hp = exec('git config core.hooksPath', { cwd: projectDir });
-      if (hp.status === 0 && hp.output.trim() === 'githooks') ok('git core.hooksPath=githooks');
+      if (hp.status === 0 && path.resolve(projectDir, hp.output.trim()) === path.resolve(projectDir, 'githooks')) ok('git core.hooksPath=githooks');
       else warn('githooks/commit-msg exists but git core.hooksPath is not "githooks"; run: git config core.hooksPath githooks');
     }
   }
