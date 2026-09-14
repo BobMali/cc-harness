@@ -1,0 +1,5 @@
+{"id":"ts-000001","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"vitest run src/a.test.ts"},"expected":{"kind":"pass"},"source":"mined","note":"fixture"}
+{"id":"ts-000002","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"rm src/a.test.ts"},"expected":{"kind":"ask","guard":"test"},"source":"mined","note":"fixture"}
+{"id":"ts-000003","lang":"ts","event":"PreToolUse","tool":"Edit","input":{"file_path":"src/a.test.ts"},"fixture":{"exists":["src/a.test.ts"]},"expected":null,"source":"mined","note":"fixture unlabelled"}
+{"id":"ts-000004","lang":"ts","event":"PostToolUse","tool":"Edit","input":{"file_path":"src/a.ts"},"expected":{"kind":"block","guard":"quality"},"source":"mined","note":"fixture: quality gate arms; PostToolUse stub exec fails"}
+{"id":"ts-000005","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git commit -m \"update code\""},"expected":{"kind":"ask","guard":"commit"},"source":"mined","note":"fixture: wrong on purpose (real: deny)"}
