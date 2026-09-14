@@ -32,6 +32,15 @@ test('readJsonl / writeJsonl round-trip; bad lines report file:line', () => {
   } finally { d.cleanup(); }
 });
 
+test('readJsonl strips a leading BOM', () => {
+  const d = makeDataDir();
+  try {
+    const f = path.join(d.dir, 'bom.jsonl');
+    fs.writeFileSync(f, '﻿{"x":1}\n{"y":2}\n');
+    assert.deepEqual(readJsonl(f), [{ x: 1 }, { y: 2 }]);
+  } finally { d.cleanup(); }
+});
+
 test('loadCorpus reads mined and adversarial dirs and tags source and file', () => {
   const d = makeDataDir();
   try {
@@ -53,4 +62,10 @@ test('validateVector', () => {
   const errs = validateVector(bad);
   for (const re of [/id/, /lang/, /event/, /tool/, /input/, /expected\.kind/, /source/]) assert.ok(errs.some((e) => re.test(e)), String(re));
   assert.ok(validateVector({ ...ok, tool: 'Edit', input: { command: 'x' } }).some((e) => /file_path/.test(e)));
+});
+
+test('validateVector rejects non-object input without throwing', () => {
+  assert.deepEqual(validateVector(null), ['vector must be an object']);
+  assert.deepEqual(validateVector(42), ['vector must be an object']);
+  assert.deepEqual(validateVector('x'), ['vector must be an object']);
 });

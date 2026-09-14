@@ -7,16 +7,22 @@ export const SECRET_PATTERNS = [
   /:\/\/[^/\s:@]+:[^/\s@]+@/, /-----BEGIN/,
   /(?:^|[^A-Za-z0-9+/=])[A-Fa-f0-9]{32,}(?![A-Za-z0-9+/=])/,
   /(?:^|[^A-Za-z0-9+/=])(?=[A-Za-z+/]*\d)[A-Za-z0-9+/]{32,}={0,2}(?![A-Za-z0-9+/=])/,   // needs a digit so letters-only paths survive
+  /(?:^|\s)(?:-u|--user)[= ][^\s:\/]+:(?!\/)\S+/,
+  /:\/\/[^/\s@:]{20,}@/,
+  /\b(?:login|mysql|mysqldump|mariadb|sshpass|smbclient)\b[^\n]*\s-p\s*\S/,
+  /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b|\bgh[pousr]_[A-Za-z0-9]{20,}|\bgithub_pat_\w{20,}|\bxox[abprs]-[A-Za-z0-9-]{10,}|\bsk-[A-Za-z0-9_-]{20,}|\bsk_(?:live|test)_\w{10,}|\bglpat-[\w-]{20,}|\bAIza[\w-]{35}/,
 ];
 
-export const SENSITIVE_PATHS = [/\.ssh(\/|\b)/, /\.gnupg(\/|\b)/, /(^|[\s"'/=])\.env(\.[A-Za-z0-9_.-]+)?(?=$|[\s"'/;&|])/, /\.npmrc\b/];
-
-const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+export const SENSITIVE_PATHS = [
+  /\.ssh(\/|\b)/, /\.gnupg(\/|\b)/, /(^|[\s"'/=])\.env(\.[A-Za-z0-9_.-]+)?(?=$|[^A-Za-z0-9_.-])/, /\.npmrc\b/,
+  /\.aws(\/|\b)/, /\.kube(\/|\b)/, /\.docker\/config\.json/, /\.netrc\b/, /\.git-credentials\b/,
+  /(^|[/\s"'])id_(?:rsa|dsa|ecdsa|ed25519)\b/, /\.(?:pem|p12|pfx)\b/,
+];
 
 export function redact(text, { cwd } = {}) {
   let t = String(text);
   if (cwd) t = t.split(cwd.replace(/\/+$/, '')).join('.');
-  t = t.replace(/\/Users\/[^/\s"']+/g, '~').replace(/\/home\/[^/\s"']+/g, '~');
+  t = t.replace(/\/Users\/[^/\s"':;]+/g, '~').replace(/\/home\/[^/\s"':;]+/g, '~');
   if (SECRET_PATTERNS.some((re) => re.test(t))) return { text: t, dropped: 'secret' };
   if (SENSITIVE_PATHS.some((re) => re.test(t))) return { text: t, dropped: 'sensitive-path' };
   t = elideHeredocs(t);
