@@ -12,13 +12,14 @@ regex=$(head -n 1 "$rules" | tr -d '\r')
 [ -n "$regex" ] || { echo "commit-msg: $rules has no regex on line 1" >&2; exit 1; }
 types=$(sed -n 's/^# types: //p' "$rules")
 scopes=$(sed -n 's/^# scopes: //p' "$rules")
+# Strip comment lines for the editor path; the Claude-side guard validates a -F <file> message verbatim, matching git's own -F cleanup.
 subject=$(grep -v '^#' "$msgfile" | sed -n '1p' | tr -d '\r')
 
 if ! printf '%s\n' "$subject" | grep -Eq "$regex"; then
   echo "commit-msg: subject \"$subject\" does not match the required format" >&2
   echo "  regex:  $regex" >&2
-  [ -n "$types" ] && echo "  types:  $types" >&2
-  [ -n "$scopes" ] && echo "  scopes: $scopes" >&2
+  if [ -n "$types" ]; then echo "  types:  $types" >&2; fi
+  if [ -n "$scopes" ]; then echo "  scopes: $scopes" >&2; fi
   exit 1
 fi
 
