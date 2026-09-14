@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "preset": "custom",
+  "project": { "markerFile": "Package.swift", "sourceGlobs": ["**/*.swift"], "testGlobs": ["**/*Tests.swift", "**/Tests/**"] },
+  "commands": {
+    "safe": ["swift", "xcodebuild", "swiftlint", "swiftformat", "xcrun"],
+    "write": [{ "cmd": "swiftformat", "unlessFlags": ["--lint"] }, { "cmd": "swiftlint", "whenFlags": ["--fix"] }]
+  },
+  "checks": [
+    { "name": "build", "cmd": "swift build", "fast": true },
+    { "name": "test", "cmd": "swift test" }
+  ],
+  "guards": { "stop": { "checks": ["build", "test"] } }
+}

@@ -45,6 +45,23 @@ export async function run(argv, io) {
 
 const EVENTS = new Set(['PreToolUse', 'PostToolUse', 'Stop', 'SessionStart']);
 
+export function evaluateGuards(event, ctx, { onError } = {}) {
+  const out = [];
+  for (const g of guardsFor(event)) {
+    if (!isGuardEnabled(ctx.config, g.name) && !g.alwaysRun) continue;
+    try {
+      out.push({ guard: g.name, decision: g.evaluate(ctx) });
+    } catch (e) {
+      if (onError) onError(g, e);
+      out.push({
+        guard: g.name,
+        decision: event === 'PreToolUse' ? ask(`cc-harness: guard "${g.name}" crashed (${e.message}); confirm manually.`) : null,
+      });
+    }
+  }
+  return out;
+}
+
 export async function runHook(event, io, overrides = {}) {
   if (!EVENTS.has(event)) { io.stderr.write(`harness: unknown hook event "${event}"\n`); return 1; }
   const input = await readJson(io.stdin);
@@ -70,17 +87,10 @@ export async function runHook(event, io, overrides = {}) {
     fs,
     now: () => Date.now(),
   };
-  const decisions = [];
-  for (const g of guardsFor(event)) {
-    if (!isGuardEnabled(config, g.name) && !g.alwaysRun) continue;
-    try {
-      decisions.push(g.evaluate(ctx));
-    } catch (e) {
-      io.stderr.write(`cc-harness: guard "${g.name}" crashed: ${e.stack || e}\n`);
-      if (event === 'PreToolUse') decisions.push(ask(`cc-harness: guard "${g.name}" crashed (${e.message}); confirm manually.`));
-    }
-  }
-  const d = pickDecision(decisions);
+  const results = evaluateGuards(event, ctx, {
+    onError: (g, e) => io.stderr.write(`cc-harness: guard "${g.name}" crashed: ${e.stack || e}\n`),
+  });
+  const d = pickDecision(results.map((r) => r.decision));
   if (!d) return 0;
   if (d.kind === 'context') { io.stdout.write(d.reason.endsWith('\n') ? d.reason : d.reason + '\n'); return 0; }
   emit(io, toHookJson(event, d));

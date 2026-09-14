@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "preset": "custom",
+  "project": { "markerFile": "composer.json", "sourceGlobs": ["**/*.php"], "testGlobs": ["**/*Test.php", "**/*Spec.php"] },
+  "commands": {
+    "safe": ["php", "phpunit", "pest", "phpstan", "psalm", "composer", "php-cs-fixer", "phpcs"],
+    "write": [
+      { "cmd": "php-cs-fixer", "unlessFlags": ["--dry-run"] },
+      { "cmd": "phpcbf" },
+      { "cmd": "php", "whenFlags": ["-r"] }
+    ]
+  },
+  "checks": [
+    { "name": "cs", "cmd": "vendor/bin/php-cs-fixer fix --dry-run --diff", "ifExists": "vendor/bin/php-cs-fixer", "fast": true },
+    { "name": "stan", "cmd": "vendor/bin/phpstan analyse --no-progress", "ifExists": "vendor/bin/phpstan", "fast": true },
+    { "name": "test", "cmd": "vendor/bin/phpunit", "ifExists": "vendor/bin/phpunit" }
+  ],
+  "guards": { "stop": { "checks": ["stan", "test"] } }
+}
