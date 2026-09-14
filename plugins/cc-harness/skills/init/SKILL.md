@@ -9,7 +9,7 @@ description: Bootstrap cc-harness in the current project (config, settings, rule
 
 Look at the project root:
 - `package.json` present → preset `ts`
-- otherwise → preset `custom` (the user fills in globs and checks by hand; point them at `${CLAUDE_PLUGIN_ROOT}/../../docs/presets.md`, "Writing a cc-harness preset", or the README's "Presets" section)
+- otherwise → preset `custom` (the user fills in globs and checks by hand; point them at "Writing a cc-harness preset", the README's Presets section, or docs/presets.md in the cc-harness repository)
 
 Tell the user which preset you detected and why. Let them override.
 

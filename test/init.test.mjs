@@ -4,7 +4,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { Writable } from 'node:stream';
-import { planInit, init, syncRules, parseInitArgs } from '../plugins/cc-harness/lib/init.mjs';
+import { planInit, init, syncRules, parseInitArgs, defaultMarketplace } from '../plugins/cc-harness/lib/init.mjs';
+import { argValue } from '../plugins/cc-harness/lib/cli.mjs';
 import { ruleStamp, RULE_NAMES } from '../plugins/cc-harness/lib/doctor.mjs';
 import { parseRegexFile } from '../plugins/cc-harness/lib/commit-rules.mjs';
 import { makeProject } from './helpers/project.mjs';
@@ -168,6 +169,83 @@ test('F3: syncRules warns and points at the regex file when it has no "# types:"
     assert.match(commits, /see githooks\/conventional-regex\.txt/);
     assert.doesNotMatch(commits, /docs test refactor/);
   } finally { p.cleanup(); }
+});
+
+test('item3: a hand-edited rejectAttributionTrailers is honoured by init --force and by sync-rules', () => {
+  const p = makeProject({ files: { 'package.json': '{}' } });
+  try {
+    init(base(p.dir), io());
+    const editHarness = () => {
+      const h = JSON.parse(p.read('.claude/harness.json'));
+      h.guards = { commit: { rejectAttributionTrailers: false } };
+      p.write('.claude/harness.json', JSON.stringify(h, null, 2));
+    };
+    editHarness();
+    assert.equal(init(base(p.dir, { force: true }), io()), 0);
+    assert.match(p.read('githooks/commit-msg'), /:-0\}/);
+    editHarness(); // init --force writes the minimal preset stub back to harness.json; re-apply for sync-rules
+    p.write('githooks/commit-msg', 'stale');
+    assert.equal(syncRules({ targetDir: p.dir, pluginVersion: '0.2.0' }, io()), 0);
+    assert.match(p.read('githooks/commit-msg'), /:-0\}/);
+  } finally { p.cleanup(); }
+});
+
+test('item3: a custom regexFile is rendered into the hook', () => {
+  const p = makeProject({ files: { 'package.json': '{}' } });
+  try {
+    init(base(p.dir), io());
+    const h = JSON.parse(p.read('.claude/harness.json'));
+    h.guards = { commit: { regexFile: 'githooks/my-rules.txt' } };
+    p.write('.claude/harness.json', JSON.stringify(h, null, 2));
+    assert.equal(init(base(p.dir, { force: true }), io()), 0);
+    assert.match(p.read('githooks/commit-msg'), /githooks\/my-rules\.txt/);
+  } finally { p.cleanup(); }
+});
+
+test('item5: permission profile skips generic-runner/write-owned checks from allow, and asks for path-qualified write commands too', () => {
+  const p = makeProject({ files: { 'package.json': '{}' } });
+  try {
+    init(base(p.dir), io());
+    const s = JSON.parse(p.read('.claude/settings.json'));
+    assert.ok(!s.permissions.allow.includes('Bash(node_modules/.bin/prettier:*)'));
+    assert.ok(!s.permissions.allow.includes('Bash(node_modules/.bin/eslint:*)'));
+    assert.ok(s.permissions.allow.includes('Bash(node_modules/.bin/tsc:*)'));
+    assert.ok(s.permissions.allow.includes('Bash(node_modules/.bin/vitest:*)'));
+    assert.ok(s.permissions.ask.includes('Bash(node_modules/.bin/prettier --write:*)'));
+    assert.ok(s.permissions.ask.includes('Bash(prettier --write:*)'));
+  } finally { p.cleanup(); }
+});
+
+test('item5: a check command starting with a shell keyword yields no bare allow entry', () => {
+  const p = makeProject({});
+  try {
+    p.write('.claude/harness.json', JSON.stringify({ version: 1, preset: 'custom', checks: [{ name: 'x', cmd: 'for f in x; do echo $f; done', fast: true }] }));
+    const plan = planInit(base(p.dir, { preset: 'custom', force: true }));
+    const settings = JSON.parse(plan.writes.find((w) => w.rel === '.claude/settings.json').content);
+    assert.ok(!settings.permissions.allow.includes('Bash(for:*)'));
+  } finally { p.cleanup(); }
+});
+
+test('item8: argValue and parseInitArgs val treat a flag-shaped next token as absent, not a value', () => {
+  assert.equal(argValue(['--target', '--force'], '--target'), undefined);
+  assert.equal(argValue(['--target', '/t'], '--target'), '/t');
+  const o = parseInitArgs(['--preset', '--force', '--target', '/t'], {});
+  assert.equal(o.preset, 'ts');   // '--force' looks like a flag, not a value for --preset
+  assert.equal(o.force, true);
+  assert.equal(o.targetDir, '/t');
+});
+
+test('item8: defaultMarketplace falls back to known_marketplaces.json before the hardcoded default', () => {
+  const p = makeProject({});
+  const emptyCandidate = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-harness-candidate-'));
+  try {
+    const gh = p.write('known-gh.json', JSON.stringify({ 'cc-harness': { source: { source: 'github', repo: 'acme/cc-harness' } } }));
+    assert.equal(defaultMarketplace({ candidateDir: emptyCandidate, knownMarketplacesFile: gh }), 'acme/cc-harness');
+    const dir = p.write('known-dir.json', JSON.stringify({ 'cc-harness': { source: { source: 'directory', path: '/local/checkout' } } }));
+    assert.equal(defaultMarketplace({ candidateDir: emptyCandidate, knownMarketplacesFile: dir }), '/local/checkout');
+    assert.equal(defaultMarketplace({ candidateDir: emptyCandidate, knownMarketplacesFile: '/does/not/exist.json' }), 'BobMali/cc-harness');
+    assert.equal(defaultMarketplace({ candidateDir: emptyCandidate, knownMarketplacesFile: p.write('known-bad.json', 'not json') }), 'BobMali/cc-harness');
+  } finally { p.cleanup(); fs.rmSync(emptyCandidate, { recursive: true, force: true }); }
 });
 
 test('parseInitArgs', () => {

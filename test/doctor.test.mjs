@@ -54,3 +54,19 @@ test('ruleStamp', () => {
   assert.equal(ruleStamp('<!-- cc-harness: v0.1.0 -->\nhi'), '0.1.0');
   assert.equal(ruleStamp('# no stamp'), null);
 });
+
+test('item7: ruleStamp strips a leading BOM and only reads line 1', () => {
+  assert.equal(ruleStamp('\uFEFF<!-- cc-harness: v0.1.0 -->\nhi'), '0.1.0');
+  assert.equal(ruleStamp('# preamble\n<!-- cc-harness: v0.1.0 -->\nhi'), null);
+});
+
+test('item7: hooksPath comparison resolves relative and absolute git output against projectDir', () => {
+  const p = makeProject({ config, marker: 'package.json', files: { 'githooks/conventional-regex.txt': REGEX, 'githooks/commit-msg': '#!/bin/sh\n', ...rules } });
+  try {
+    for (const output of ['./githooks\n', `${p.dir}/githooks\n`]) {
+      const exec = (cmd) => (cmd.includes('core.hooksPath') ? { status: 0, output } : { status: 0, output: 'git version 2.40\n' });
+      const r = report(p, { exec });
+      assert.deepEqual(r.findings.filter((f) => f.level !== 'ok'), [], output);
+    }
+  } finally { p.cleanup(); }
+});

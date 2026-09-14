@@ -36,6 +36,21 @@ test('marker file configured but absent → silent', () => {
   } finally { p.cleanup(); }
 });
 
+test('item4: marker file absent still exempts SessionStart, which reports it; PreToolUse stays silent', () => {
+  const p = makeProject({ config: { ...CFG, project: { ...CFG.project, markerFile: 'package.json' } } });
+  try {
+    const start = spawnSync(process.execPath, [BIN, 'hook', 'SessionStart'], {
+      input: JSON.stringify({ source: 'startup', session_id: 's1' }),
+      encoding: 'utf8',
+      env: { ...process.env, CLAUDE_PROJECT_DIR: p.dir, CLAUDE_PLUGIN_DATA: '' },
+    });
+    assert.equal(start.status, 0);
+    assert.match(start.stdout, /marker file package\.json not found/);
+    const pre = runHookCli('PreToolUse', { tool_name: 'Bash', tool_input: { command: 'rm x.test.ts' } }, { projectDir: p.dir });
+    assert.equal(pre.status, 0); assert.equal(pre.stdout, '');
+  } finally { p.cleanup(); }
+});
+
 test('PreToolUse emits the ask JSON shape; deny beats ask', () => {
   const p = makeProject({ config: CFG, files: { 'x.test.ts': '' } });
   try {

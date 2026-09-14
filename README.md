@@ -2,6 +2,8 @@
 
 Config-driven guardrails and a one-command bootstrap for Claude Code projects. Zero dependencies; Node 18+.
 
+A POSIX shell at `/bin/sh` (checks run through it); native Windows is not supported yet — use WSL.
+
 **What it enforces, once `.claude/harness.json` exists in a project:**
 
 | Guard | Event | Behaviour |

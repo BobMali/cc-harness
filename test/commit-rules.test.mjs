@@ -46,6 +46,13 @@ test('F3: attached -m"value" form', () => {
   assert.equal(extract('git commit -m"feat: attached"'), 'feat: attached');
 });
 
+test('item6: attached-value regex excludes value-taking short flags from the prefix', () => {
+  const seg = 'git commit -Fmsg.txt';
+  assert.equal(extractCommitMessage(seg, seg, tokenize(seg), (f) => (f === 'msg.txt' ? 'docs: from file' : null)), 'docs: from file');
+  assert.equal(extract('git commit -Cmain'), null);
+  assert.equal(extract('git commit -am"feat: x"'), 'feat: x');
+});
+
 test('F4: the $(cat <<EOF ... ) idiom is expanded; other $() or backtick values bail with null', () => {
   assert.equal(extract('git commit -m "$(cat <<\'EOF\'\nfeat: add x\n\nbody here\nEOF\n)"'), 'feat: add x\n\nbody here');
   assert.equal(extract('git commit -m "$(echo hi)"'), null);
