@@ -188,12 +188,20 @@ export function isWrite(tokens, word, writeCommands = []) {
 
 // git [global opts] <subcommand> [args]; global opts like -C <dir>, -c k=v, and the
 // long space-form globals (--git-dir <dir>, --work-tree <dir>, --namespace <ns>,
-// --exec-path <path>, --config-env <name>=<envvar>) take a value. The `=` form
+// --attr-source <tree-ish>, --config-env <name>=<envvar>) take a value. The `=` form
 // (--work-tree=/x) is a single token and needs no special handling here.
-const GIT_GLOBAL_VALUE_OPTS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--exec-path', '--config-env']);
+// --exec-path is deliberately excluded: git has no space-form value for it (only
+// `--exec-path=<path>`); a bare `--exec-path` prints the current exec path and exits
+// before any subcommand runs, so treating the following token as its value would be wrong
+// (and it must not be treated as an ordinary bare flag either — see the short-circuit below).
+const GIT_GLOBAL_VALUE_OPTS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--attr-source', '--config-env']);
 export function gitSubcommand(args) {
   let i = 0;
   while (i < args.length && args[i].startsWith('-')) {
+    // Exact match only: `--exec-path=<path>` (a single token) sets the path and git
+    // proceeds normally, but a bare `--exec-path` prints it and exits(0) immediately,
+    // so nothing after it ever runs as a subcommand.
+    if (args[i] === '--exec-path') return { sub: '', rest: [] };
     if (GIT_GLOBAL_VALUE_OPTS.has(args[i])) i += 2; else i += 1;
   }
   return { sub: args[i] ?? '', rest: args.slice(i + 1) };

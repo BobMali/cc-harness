@@ -97,7 +97,8 @@ export function planInit(opts) {
   // Only reuse the existing file when it was written for the same preset the caller
   // is (re-)initing with; a `--preset` switch should not inherit the old preset's
   // checks/commands/permissions just because a valid harness.json already exists.
-  const config = loaded.status === 'ok' && loaded.config.preset === opts.preset ? loaded.config : presetConfig;
+  const reuseExisting = loaded.status === 'ok' && loaded.config.preset === opts.preset;
+  const config = reuseExisting ? loaded.config : presetConfig;
   const vars = templateVars({ config, preset, types: opts.types, scopes: opts.scopes, pluginVersion: version, projectName: opts.projectName });
   const tpl = (rel) => fs.readFileSync(path.join(tdir, rel), 'utf8');
   const exists = (rel) => fs.existsSync(path.join(opts.targetDir, rel));
@@ -108,7 +109,14 @@ export function planInit(opts) {
     ? { version: 1, preset: 'custom', project: { markerFile: '', sourceGlobs: [], testGlobs: [] }, commands: { safe: [], write: [] }, checks: [], guards: { stop: { checks: [] } } }
     : { version: 1, preset: opts.preset };
   if (exists('.claude/harness.json') && !opts.force) refusals.push('.claude/harness.json exists; pass --force to overwrite it');
-  writes.push({ rel: '.claude/harness.json', content: JSON.stringify(harnessJson, null, 2) + '\n', action: exists('.claude/harness.json') ? 'overwrite' : 'create' });
+  // When reusing the caller's existing harness.json (same preset), write back the
+  // user's own file unchanged rather than the stub: the rendered hook/rules/CI
+  // above were built from `config` (the loaded file), so the stub would otherwise
+  // disagree with them (e.g. a custom regexFile the stub doesn't mention).
+  const harnessJsonContent = reuseExisting
+    ? JSON.stringify(JSON.parse(fs.readFileSync(path.join(opts.targetDir, '.claude/harness.json'), 'utf8')), null, 2) + '\n'
+    : JSON.stringify(harnessJson, null, 2) + '\n';
+  writes.push({ rel: '.claude/harness.json', content: harnessJsonContent, action: exists('.claude/harness.json') ? 'overwrite' : 'create' });
 
   const settingsFragment = { enabledPlugins: { [PLUGIN_KEY]: true }, permissions: permissionFragment(config) };
   const marketIsRepo = isRepo(opts.marketplace);

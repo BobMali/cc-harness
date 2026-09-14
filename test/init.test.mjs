@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { Writable } from 'node:stream';
 import { planInit, init, syncRules, parseInitArgs, defaultMarketplace } from '../plugins/cc-harness/lib/init.mjs';
+import { loadConfig } from '../plugins/cc-harness/lib/config.mjs';
 import { argValue } from '../plugins/cc-harness/lib/cli.mjs';
 import { ruleStamp, RULE_NAMES } from '../plugins/cc-harness/lib/doctor.mjs';
 import { parseRegexFile } from '../plugins/cc-harness/lib/commit-rules.mjs';
@@ -183,7 +184,6 @@ test('item3: a hand-edited rejectAttributionTrailers is honoured by init --force
     editHarness();
     assert.equal(init(base(p.dir, { force: true }), io()), 0);
     assert.match(p.read('githooks/commit-msg'), /:-0\}/);
-    editHarness(); // init --force writes the minimal preset stub back to harness.json; re-apply for sync-rules
     p.write('githooks/commit-msg', 'stale');
     assert.equal(syncRules({ targetDir: p.dir, pluginVersion: '0.2.0' }, io()), 0);
     assert.match(p.read('githooks/commit-msg'), /:-0\}/);
@@ -199,6 +199,27 @@ test('item3: a custom regexFile is rendered into the hook', () => {
     p.write('.claude/harness.json', JSON.stringify(h, null, 2));
     assert.equal(init(base(p.dir, { force: true }), io()), 0);
     assert.match(p.read('githooks/commit-msg'), /githooks\/my-rules\.txt/);
+  } finally { p.cleanup(); }
+});
+
+test('item1: init --force preserves the user harness.json (custom regexFile + rejectAttributionTrailers) instead of the preset stub', () => {
+  const p = makeProject({ files: { 'package.json': '{}' } });
+  try {
+    init(base(p.dir), io());
+    p.write('githooks/my-rules.txt', p.read('githooks/conventional-regex.txt'));
+    const h = JSON.parse(p.read('.claude/harness.json'));
+    h.guards = { commit: { regexFile: 'githooks/my-rules.txt', rejectAttributionTrailers: false } };
+    p.write('.claude/harness.json', JSON.stringify(h, null, 2));
+    assert.equal(init(base(p.dir, { force: true }), io()), 0);
+    const after = JSON.parse(p.read('.claude/harness.json'));
+    assert.equal(after.guards.commit.regexFile, 'githooks/my-rules.txt');
+    assert.equal(after.guards.commit.rejectAttributionTrailers, false);
+    const hook = p.read('githooks/commit-msg');
+    assert.match(hook, /my-rules\.txt/);
+    assert.match(hook, /:-0\}/);
+    const loaded = loadConfig(p.dir);
+    assert.equal(loaded.status, 'ok');
+    assert.equal(loaded.config.guards.commit.regexFile, 'githooks/my-rules.txt');
   } finally { p.cleanup(); }
 });
 

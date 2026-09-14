@@ -102,6 +102,11 @@ test('gitSubcommand consumes a value for space-form globals, not just the = form
   assert.deepEqual(gitSubcommand(['--git-dir', '/x', 'commit', '-m', 'x']), { sub: 'commit', rest: ['-m', 'x'] });
   assert.deepEqual(gitSubcommand(['--work-tree=/x', 'reset', '--hard']), { sub: 'reset', rest: ['--hard'] });
   assert.deepEqual(gitSubcommand(['--namespace', 'ns', 'branch', '-D', 'x']), { sub: 'branch', rest: ['-D', 'x'] });
-  assert.deepEqual(gitSubcommand(['--exec-path', '/bin', 'push', '--force']), { sub: 'push', rest: ['--force'] });
+  assert.deepEqual(gitSubcommand(['--attr-source', 'HEAD', 'reset', '--hard']), { sub: 'reset', rest: ['--hard'] });
   assert.deepEqual(gitSubcommand(['--config-env', 'x=y', 'clean', '-f']), { sub: 'clean', rest: ['-f'] });
+});
+
+test('gitSubcommand: a bare --exec-path short-circuits (git prints the path and exits before any subcommand runs), but --exec-path=<path> does not', () => {
+  assert.deepEqual(gitSubcommand(['--exec-path', 'reset', '--hard']), { sub: '', rest: [] });
+  assert.deepEqual(gitSubcommand(['--exec-path=/x', 'reset', '--hard']), { sub: 'reset', rest: ['--hard'] });
 });
