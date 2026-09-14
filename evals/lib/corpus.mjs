@@ -20,7 +20,9 @@ export function vectorId(lang, tool, input, fixtureExists = false) {
 
 export function readJsonl(file) {
   const out = [];
-  const lines = fs.readFileSync(file, 'utf8').split('\n');
+  let content = fs.readFileSync(file, 'utf8');
+  if (content.charCodeAt(0) === 0xfeff) content = content.slice(1);
+  const lines = content.split('\n');
   lines.forEach((line, i) => {
     if (!line.trim()) return;
     try { out.push(JSON.parse(line)); } catch (e) { throw new Error(`${file}:${i + 1}: ${e.message}`); }
@@ -50,6 +52,7 @@ export function loadCorpus(dir) {
 }
 
 export function validateVector(v) {
+  if (v === null || typeof v !== 'object') return ['vector must be an object'];
   const e = [];
   if (typeof v.id !== 'string' || !/^[a-z]+-[0-9a-f]{6}$/.test(v.id)) e.push(`id "${v.id}" must look like <lang>-<6 hex>`);
   if (!LANGS.includes(v.lang)) e.push(`lang "${v.lang}" must be one of ${LANGS.join(' ')}`);
