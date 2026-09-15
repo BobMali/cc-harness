@@ -74,3 +74,39 @@ test('C1: the cwd substitution is anchored to a path boundary', () => {
   const r = redact('cat /Users/alice/app-other/x.ts', { cwd: '/Users/alice/app' });
   assert.equal(r.text, 'cat ~/app-other/x.ts');
 });
+
+// --- Fix round 3 --------------------------------------------------------
+
+test('Claude Code project-directory encodings and session UUIDs are rewritten', () => {
+  assert.equal(
+    redact('cat ~/.claude/projects/-Users-alice-projects-app/memory/x.md', { cwd }).text,
+    'cat ~/.claude/projects/-Users-~-projects-app/memory/x.md',
+  );
+  assert.equal(
+    redact('/private/tmp/claude-501/-home-bob-src/x', { cwd }).text,
+    '/private/tmp/claude-501/-home-~-src/x',
+  );
+  assert.equal(redact('echo -Users-', { cwd }).text, 'echo -Users-');
+
+  const PLACEHOLDER = '00000000-0000-4000-8000-000000000000';
+  assert.equal(
+    redact('cat /private/tmp/claude-501/x/071c35b9-0cf2-4f94-8944-f98ff20e57b4/scratchpad/notes.md', { cwd }).text,
+    `cat /private/tmp/claude-501/x/${PLACEHOLDER}/scratchpad/notes.md`,
+  );
+  assert.equal(
+    redact('diff 071c35b9-0cf2-4f94-8944-f98ff20e57b4 a1b2c3d4-e5f6-7890-abcd-ef1234567890', { cwd }).text,
+    `diff ${PLACEHOLDER} ${PLACEHOLDER}`,
+  );
+});
+
+test('emails drop the vector except the allowlisted noreply address', () => {
+  assert.equal(redact('git config user.email alice@example.com', { cwd }).dropped, 'secret');
+  assert.equal(redact('git commit -m "feat: x" -m "Co-Authored-By: Claude <noreply@anthropic.com>"', { cwd }).dropped, null);
+  for (const c of ['go get gremlins@v0.6.0', 't@t', 'a@b.c', 'x@y']) assert.equal(redact(c, { cwd }).dropped, null, c);
+});
+
+test('personal words drop the vector as a whole word, case-insensitively', () => {
+  assert.equal(redact('echo Alice asked', { words: ['Alice'] }).dropped, 'personal');
+  assert.equal(redact('echo malicious', { words: ['Alice'] }).dropped, null);
+  assert.equal(redact('cat ALICE.md', { words: ['Alice'] }).dropped, 'personal');
+});

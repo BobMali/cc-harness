@@ -52,7 +52,7 @@ Review the miner's "longest vectors" list before committing.
 
 ## Redaction guarantees
 
-The miner writes only the command (Bash) or the file path (edit tools), the language, and a fixture list. Absolute paths under the project become `.`; home directories become `~`. Vectors mentioning tokens, secrets, passwords, API keys, authorization headers, credentialed URLs, PEM blocks, or 32+ character hex/base64 runs are dropped, as are vectors touching `.ssh`, `.gnupg`, `.env`, or `.npmrc`. Heredoc bodies over 40 lines are elided; commands over 2,000 characters are truncated. Edit contents, tool results, session ids, and timestamps are never written.
+The miner writes only the command (Bash) or the file path (edit tools), the language, and a fixture list. Absolute paths under the project become `.`; home directories become `~`. Vectors mentioning tokens, secrets, passwords, API keys, authorization headers, credentialed URLs, PEM blocks, or 32+ character hex/base64 runs are dropped, as are vectors touching `.ssh`, `.gnupg`, `.env`, or `.npmrc`. Heredoc bodies over 40 lines are elided; commands over 2,000 characters are truncated. Edit contents, tool results, session ids, and timestamps are never written. Claude Code's project-directory encodings (`-Users-<name>-…`) and session UUIDs are rewritten; vectors containing an email address are dropped. A gitignored `evals/redact.local.json` (`{ "words": [...] }`) lists personal words whose vectors are dropped; it never enters the repo.
 
 ## Languages
 

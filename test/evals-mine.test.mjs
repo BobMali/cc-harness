@@ -54,7 +54,7 @@ test('mine: lang tag, fixture derivation, redaction, dedupe, merge with existing
     assert.ok(rows.every((v) => !JSON.stringify(v).includes('..')));
     assert.ok(rows.every((v) => v.note === `${path.basename(proj.dir)} 2026-08`));
     assert.equal(rows[0].id, vectorId('ts', 'PreToolUse', 'Bash', { command: 'npx vitest run src/a.test.ts' }));
-    assert.deepEqual(r.dropped, { secret: 1, 'sensitive-path': 1, 'escaping-path': 0, shadowed: 0 });
+    assert.deepEqual(r.dropped, { secret: 1, 'sensitive-path': 1, 'escaping-path': 0, personal: 0, shadowed: 0 });
     assert.equal(r.added, 6);
     assert.deepEqual(r.byLang, { ts: 6 });
     assert.ok(log.some((s) => /longest/i.test(s)));
@@ -186,6 +186,50 @@ test('F2: a relative file_path that escapes upward is dropped as escaping-path; 
 });
 
 // --- Fix round 1 (E4) -------------------------------------------------
+
+// --- Fix round 3 --------------------------------------------------------
+
+test('mine drops personal-word vectors using a wordsFile, and counts them (never the real sibling path in tests)', () => {
+  const proj = makeProject({ files: { 'package.json': '{}' } });
+  const from = makeDataDir(); const out = makeDataDir(); const wordsDir = makeDataDir();
+  try {
+    const dir = path.join(from.dir, '-p-app'); fs.mkdirSync(dir);
+    const mk = (command) => ({
+      type: 'assistant', cwd: proj.dir, timestamp: '2026-08-29T10:00:00.000Z',
+      message: { role: 'assistant', content: [{ type: 'tool_use', name: 'Bash', input: { command } }] },
+    });
+    fs.writeFileSync(
+      path.join(dir, 's1.jsonl'),
+      [mk('echo Alice asked'), mk('echo hi there')].map((r) => JSON.stringify(r)).join('\n') + '\n',
+    );
+    const wordsFile = path.join(wordsDir.dir, 'redact.local.json');
+    fs.writeFileSync(wordsFile, JSON.stringify({ words: ['Alice'] }));
+    const log = [];
+    const r = mine({ from: from.dir, out: out.dir, wordsFile, log: (s) => log.push(s) });
+    const rows = readJsonl(path.join(out.dir, 'ts.jsonl'));
+    const cmds = rows.map((v) => v.input.command);
+    assert.ok(!cmds.includes('echo Alice asked'), JSON.stringify(cmds));
+    assert.ok(cmds.includes('echo hi there'), JSON.stringify(cmds));
+    assert.equal(r.dropped.personal, 1);
+    assert.ok(log.some((s) => /personal=1/.test(s)), log.join('\n'));
+  } finally { proj.cleanup(); from.cleanup(); out.cleanup(); wordsDir.cleanup(); }
+});
+
+test('mine works with no wordsFile at all (missing file → no personal drops)', () => {
+  const proj = makeProject({ files: { 'package.json': '{}' } });
+  const from = makeDataDir(); const out = makeDataDir(); const wordsDir = makeDataDir();
+  try {
+    const dir = path.join(from.dir, '-q-app'); fs.mkdirSync(dir);
+    const rec = {
+      type: 'assistant', cwd: proj.dir, timestamp: '2026-08-29T10:00:00.000Z',
+      message: { role: 'assistant', content: [{ type: 'tool_use', name: 'Bash', input: { command: 'echo hi' } }] },
+    };
+    fs.writeFileSync(path.join(dir, 's1.jsonl'), JSON.stringify(rec) + '\n');
+    const r = mine({ from: from.dir, out: out.dir, wordsFile: path.join(wordsDir.dir, 'does-not-exist.json'), log: () => {} });
+    assert.equal(r.dropped.personal, 0);
+    assert.equal(readJsonl(path.join(out.dir, 'ts.jsonl')).length, 1);
+  } finally { proj.cleanup(); from.cleanup(); out.cleanup(); wordsDir.cleanup(); }
+});
 
 test('B1: a mined vector whose id already exists in the sibling adversarial corpus is shadowed, not re-mined', () => {
   const proj = makeProject({ files: { 'package.json': '{}' } });

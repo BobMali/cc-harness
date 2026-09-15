@@ -9,7 +9,19 @@ import { redact } from './lib/redact.mjs';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_FROM = path.join(os.homedir(), '.claude', 'projects');
 const DEFAULT_OUT = path.join(HERE, 'corpus', 'mined');
+const DEFAULT_WORDS_FILE = path.join(HERE, 'redact.local.json');
 const LONGEST = 50;
+
+// evals/redact.local.json (gitignored, never committed) holds { "words": [...] } —
+// personal words (e.g. the user's own name) to drop from the mined corpus without
+// hardcoding them in the public redactor. Missing file or malformed JSON → no words.
+function loadWords(wordsFile, fsm) {
+  if (!wordsFile || !fsm.existsSync(wordsFile)) return [];
+  try {
+    const data = JSON.parse(fsm.readFileSync(wordsFile, 'utf8'));
+    return Array.isArray(data.words) ? data.words : [];
+  } catch { return []; }
+}
 
 export function detectLang(cwd, fsm = fs) {
   const has = (f) => { try { return fsm.existsSync(path.join(cwd, f)); } catch { return false; } };
@@ -70,7 +82,7 @@ function relOrAbs(cwd, p) {
   return norm(abs);
 }
 
-export function toVector(use, { cwd, lang, touched, month, project }) {
+export function toVector(use, { cwd, lang, touched, month, project, words = [] }) {
   const isBash = use.tool === 'Bash';
   let raw;
   if (isBash) {
@@ -79,7 +91,7 @@ export function toVector(use, { cwd, lang, touched, month, project }) {
     raw = relOrAbs(cwd, use.input.file_path);
     if (raw === null) return { dropped: 'escaping-path' };
   }
-  const r = redact(raw, { cwd });
+  const r = redact(raw, { cwd, words });
   if (r.dropped) return { dropped: r.dropped };
   const input = isBash ? { command: r.text } : { file_path: r.text };
   let fixture;
@@ -93,9 +105,9 @@ export function toVector(use, { cwd, lang, touched, month, project }) {
   return { ...v, expected: null, source: 'mined', note: `${project} ${month}` };
 }
 
-export function mineFile(file, { fsm = fs } = {}) {
+export function mineFile(file, { fsm = fs, words = [] } = {}) {
   const vectors = [];
-  const dropped = { secret: 0, 'sensitive-path': 0, 'escaping-path': 0 };
+  const dropped = { secret: 0, 'sensitive-path': 0, 'escaping-path': 0, personal: 0 };
   const touched = new Set();
   const langCache = new Map();
   for (const line of fsm.readFileSync(file, 'utf8').split('\n')) {
@@ -110,7 +122,7 @@ export function mineFile(file, { fsm = fs } = {}) {
     const month = /^\d{4}-\d{2}$/.test(monthCandidate) ? monthCandidate : 'unknown';
     const project = projectName(cwd);
     for (const use of uses) {
-      const v = toVector(use, { cwd, lang, touched, month, project });
+      const v = toVector(use, { cwd, lang, touched, month, project, words });
       if (v.dropped) dropped[v.dropped] += 1; else vectors.push(v);
     }
   }
@@ -126,10 +138,11 @@ function walk(dir, fsm) {
   return out.sort();
 }
 
-export function mine({ from = DEFAULT_FROM, out = DEFAULT_OUT, fsm = fs, log = (s) => process.stdout.write(s + '\n') } = {}) {
+export function mine({ from = DEFAULT_FROM, out = DEFAULT_OUT, wordsFile = DEFAULT_WORDS_FILE, fsm = fs, log = (s) => process.stdout.write(s + '\n') } = {}) {
   if (!fsm.existsSync(from)) throw new Error(`transcripts directory not found: ${from}`);
+  const words = loadWords(wordsFile, fsm);
   const byLangNew = new Map();
-  const dropped = { secret: 0, 'sensitive-path': 0, 'escaping-path': 0, shadowed: 0 };
+  const dropped = { secret: 0, 'sensitive-path': 0, 'escaping-path': 0, personal: 0, shadowed: 0 };
   const seen = new Set();
   // A new vector whose id already exists in the sibling adversarial corpus is shadowed:
   // the adversarial corpus already labels that exact (lang, event, tool, input, fixture)
@@ -142,8 +155,8 @@ export function mine({ from = DEFAULT_FROM, out = DEFAULT_OUT, fsm = fs, log = (
     }
   }
   for (const file of walk(from, fsm)) {
-    const r = mineFile(file, { fsm });
-    dropped.secret += r.dropped.secret; dropped['sensitive-path'] += r.dropped['sensitive-path']; dropped['escaping-path'] += r.dropped['escaping-path'];
+    const r = mineFile(file, { fsm, words });
+    dropped.secret += r.dropped.secret; dropped['sensitive-path'] += r.dropped['sensitive-path']; dropped['escaping-path'] += r.dropped['escaping-path']; dropped.personal += r.dropped.personal;
     for (const v of r.vectors) {
       if (adversarialIds.has(v.id)) { dropped.shadowed += 1; continue; }
       if (seen.has(v.id)) continue;
@@ -166,7 +179,7 @@ export function mine({ from = DEFAULT_FROM, out = DEFAULT_OUT, fsm = fs, log = (
     all.push(...existing, ...appended);
   }
   const longest = [...all].sort((a, b) => JSON.stringify(b.input).length - JSON.stringify(a.input).length).slice(0, LONGEST);
-  log(`mined ${added} new vector(s): ${Object.entries(byLang).map(([l, n]) => `${l}=${n}`).join(' ') || 'none'}; dropped secret=${dropped.secret} sensitive-path=${dropped['sensitive-path']} escaping-path=${dropped['escaping-path']} shadowed=${dropped.shadowed}`);
+  log(`mined ${added} new vector(s): ${Object.entries(byLang).map(([l, n]) => `${l}=${n}`).join(' ') || 'none'}; dropped secret=${dropped.secret} sensitive-path=${dropped['sensitive-path']} escaping-path=${dropped['escaping-path']} personal=${dropped.personal} shadowed=${dropped.shadowed}`);
   log(`${longest.length} longest vectors (review before committing):`);
   for (const v of longest) log(`  ${v.id}  ${v.tool}  ${JSON.stringify(v.input.command ?? v.input.file_path).slice(0, 160)}`);
   return { added, byLang, dropped, longest };
