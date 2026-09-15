@@ -15,7 +15,7 @@ export function matrix(results) {
 
 const pad = (s, n) => String(s).padEnd(n);
 
-export function formatReport(results, { elapsedMs = 0, shadowed = 0 } = {}) {
+export function formatReport(results, { elapsedMs = 0, shadowed = 0, viaCli = null } = {}) {
   const lines = [];
   const m = matrix(results);
   lines.push(`${pad('lang', 6)}| ${pad('guard', 9)}| ${KINDS.map((k) => pad(k, 6)).join('| ')}`);
@@ -34,6 +34,10 @@ export function formatReport(results, { elapsedMs = 0, shadowed = 0 } = {}) {
   if (by('known-gap').length) { lines.push('', `known gaps: ${by('known-gap').length}`); for (const r of by('known-gap')) lines.push(describe(r), line2(r)); }
   if (by('unlabelled').length) { lines.push('', `unlabelled: ${by('unlabelled').length} (run with --update to accept current decisions)`); }
   if (shadowed) { lines.push('', `shadowed by adversarial: ${shadowed}`); }
+  if (viaCli) {
+    lines.push('', `via cli: ${viaCli.checked} checked, ${viaCli.mismatches.length} envelope mismatches`);
+    for (const m of viaCli.mismatches) lines.push(`  ${m.id}  expected ${m.inProcess}  via cli ${m.viaCli}`);
+  }
   lines.push('', `total ${results.length} · matched ${by('match').length} · mismatched ${by('mismatch').length} · unlabelled ${by('unlabelled').length} · known gaps ${by('known-gap').length} · gap closed ${by('gap-closed').length} · crashed ${by('crashed').length} · ${(elapsedMs / 1000).toFixed(2)}s`);
   return lines.join('\n') + '\n';
 }

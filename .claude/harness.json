@@ -13,7 +13,8 @@
   "checks": [
     { "name": "syntax", "cmd": "for f in plugins/cc-harness/bin/*.mjs plugins/cc-harness/lib/*.mjs plugins/cc-harness/lib/guards/*.mjs test/*.mjs test/helpers/*.mjs; do node --check \"$f\" || exit 1; done", "fast": true },
     { "name": "validate", "cmd": "claude plugin validate plugins/cc-harness --strict", "ifExists": "plugins/cc-harness/.claude-plugin/plugin.json", "fast": true },
-    { "name": "tests", "cmd": "node --test test/*.test.mjs" }
+    { "name": "tests", "cmd": "node --test test/*.test.mjs" },
+    { "name": "evals", "cmd": "node evals/run.mjs --quiet" }
   ],
-  "guards": { "stop": { "checks": ["syntax", "tests"] } }
+  "guards": { "stop": { "checks": ["syntax", "tests", "evals"] } }
 }
