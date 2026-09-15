@@ -54,7 +54,7 @@ test('mine: lang tag, fixture derivation, redaction, dedupe, merge with existing
     assert.ok(rows.every((v) => !JSON.stringify(v).includes('..')));
     assert.ok(rows.every((v) => v.note === `${path.basename(proj.dir)} 2026-08`));
     assert.equal(rows[0].id, vectorId('ts', 'Bash', { command: 'npx vitest run src/a.test.ts' }));
-    assert.deepEqual(r.dropped, { secret: 1, 'sensitive-path': 1 });
+    assert.deepEqual(r.dropped, { secret: 1, 'sensitive-path': 1, 'escaping-path': 0 });
     assert.equal(r.added, 6);
     assert.deepEqual(r.byLang, { ts: 6 });
     assert.ok(log.some((s) => /longest/i.test(s)));
@@ -138,4 +138,49 @@ test('M2: the CLI rejects --from/--out given without a value', () => {
     assert.equal(flagShaped.status, 1);
     assert.match(flagShaped.stderr, /--out/);
   } finally { safeHome.cleanup(); }
+});
+
+// --- Fix round 2 -------------------------------------------------------
+
+test('F1: a cwd that is a home directory itself never leaks the username via note', () => {
+  const from = makeDataDir(); const out = makeDataDir();
+  const dir = path.join(from.dir, '-w-app'); fs.mkdirSync(dir);
+  const mk = (cwd, command) => ({
+    type: 'assistant', cwd, timestamp: '2026-08-29T10:00:00.000Z',
+    message: { role: 'assistant', content: [{ type: 'tool_use', name: 'Bash', input: { command } }] },
+  });
+  fs.writeFileSync(
+    path.join(dir, 's1.jsonl'),
+    [mk('/Users/alice', 'echo one'), mk('/home/bob', 'echo two')].map((r) => JSON.stringify(r)).join('\n') + '\n',
+  );
+  try {
+    mine({ from: from.dir, out: out.dir, log: () => {} });
+    const rows = readJsonl(path.join(out.dir, 'none.jsonl'));
+    assert.equal(rows.length, 2);
+    assert.ok(rows.every((v) => v.note.startsWith('home ')), JSON.stringify(rows.map((v) => v.note)));
+    assert.ok(!JSON.stringify(rows).includes('alice'));
+    assert.ok(!JSON.stringify(rows).includes('bob'));
+  } finally { from.cleanup(); out.cleanup(); }
+});
+
+test('F2: a relative file_path that escapes upward is dropped as escaping-path; one that normalizes safely is kept', () => {
+  const proj = makeProject({ files: { 'package.json': '{}' } });
+  const from = makeDataDir(); const out = makeDataDir();
+  try {
+    const dir = path.join(from.dir, '-v-app'); fs.mkdirSync(dir);
+    const mk = (file_path) => ({
+      type: 'assistant', cwd: proj.dir, timestamp: '2026-08-29T10:00:00.000Z',
+      message: { role: 'assistant', content: [{ type: 'tool_use', name: 'Edit', input: { file_path, old_string: 'a', new_string: 'b' } }] },
+    });
+    fs.writeFileSync(
+      path.join(dir, 's1.jsonl'),
+      [mk('../../etc/passwd'), mk('src/../a.ts')].map((r) => JSON.stringify(r)).join('\n') + '\n',
+    );
+    const r = mine({ from: from.dir, out: out.dir, log: () => {} });
+    const rows = readJsonl(path.join(out.dir, 'ts.jsonl'));
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].input.file_path, 'a.ts');
+    assert.equal(r.dropped['escaping-path'], 1);
+    assert.ok(rows.every((v) => !JSON.stringify(v).includes('..')));
+  } finally { proj.cleanup(); from.cleanup(); out.cleanup(); }
 });
