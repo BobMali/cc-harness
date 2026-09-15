@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { runSuite, evaluateVector, makeLangProject, compare } from '../evals/run.mjs';
+import { runSuite, evaluateVector, makeLangProject, compare, sampleViaCli } from '../evals/run.mjs';
 import { readJsonl } from '../evals/lib/corpus.mjs';
 import { toJson } from '../evals/lib/report.mjs';
 import { makeDataDir } from './helpers/project.mjs';
@@ -230,15 +230,6 @@ test('B2: a duplicate id where one copy is mined and the other adversarial is sh
   } finally { c.cleanup(); }
 });
 
-test('--via cli --sample compares the stdout envelope with the in-process decision', () => {
-  const c = copyFixture();
-  try {
-    const r = runSuite({ corpusDir: c.dir, configsDir: CONFIGS, quiet: true, viaCli: true, sample: 3, update: true });
-    assert.match(r.report, /via cli: 3 checked, 0 envelope mismatches/);
-    assert.equal(r.exitCode, 1);   // gap-closed fixture still fails; envelope is clean
-  } finally { c.cleanup(); }
-});
-
 test('B2: a duplicate id within the same source still throws', () => {
   const c = copyFixture();
   try {
@@ -248,4 +239,44 @@ test('B2: a duplicate id within the same source still throws', () => {
     fs.writeFileSync(path.join(c.dir, 'mined', 'dup.jsonl'), JSON.stringify(dup) + '\n');
     assert.throws(() => runSuite({ corpusDir: c.dir, configsDir: CONFIGS, quiet: true }), /duplicate vector id ts-000003/);
   } finally { c.cleanup(); }
+});
+
+test('--via cli --sample compares the stdout envelope with the in-process decision', () => {
+  const c = copyFixture();
+  try {
+    const r = runSuite({ corpusDir: c.dir, configsDir: CONFIGS, quiet: true, viaCli: true, sample: 3, update: true });
+    assert.match(r.report, /via cli: 3 checked, 0 envelope mismatches/);
+    assert.equal(r.exitCode, 1);   // gap-closed fixture still fails; envelope is clean
+  } finally { c.cleanup(); }
+});
+
+// --- Fix round 1 -------------------------------------------------------
+
+test('F1: sampleViaCli scores a failed cli spawn as an envelope mismatch, not a pass', () => {
+  const c = copyFixture();
+  try {
+    const r = runSuite({
+      corpusDir: c.dir, configsDir: CONFIGS, quiet: true, update: true,
+      viaCli: true, sample: 3, cliEnv: { NODE_OPTIONS: '--require /nonexistent' },
+    });
+    assert.equal(r.viaCli.mismatches.length, 3);
+    const decisionKinds = ['pass', 'ask', 'deny', 'block'];
+    for (const m of r.viaCli.mismatches) assert.ok(!decisionKinds.includes(m.viaCli), `unexpected decision-shaped viaCli: ${m.viaCli}`);
+    assert.equal(r.exitCode, 1);
+  } finally { c.cleanup(); }
+});
+
+test('F1 minor: sampleViaCli excludes crashed results from the sample pool', () => {
+  const proj = makeLangProject('ts', CONFIGS); const data = makeDataDir();
+  try {
+    const goodVector = { id: 'ts-good1', lang: 'ts', event: 'PreToolUse', tool: 'Bash', input: { command: 'echo hi' } };
+    const good = { vector: goodVector, actual: evaluateVector(goodVector, proj, data.dir), status: 'match' };
+    // lang "nope" has no project; if the crashed entry were not excluded, sampling it would
+    // throw trying to read project.dir off an undefined project.
+    const crashedVector = { id: 'ts-crash1', lang: 'nope', event: 'PreToolUse', tool: 'Bash', input: { command: 'x' } };
+    const crashed = { vector: crashedVector, actual: { kind: 'crashed' }, status: 'crashed' };
+    const r = sampleViaCli([good, crashed], new Map([['ts', proj]]), { sample: 5, dataDir: data.dir });
+    assert.equal(r.checked, 1);
+    assert.ok(!r.mismatches.some((m) => m.id === 'ts-crash1'));
+  } finally { proj.cleanup(); data.cleanup(); }
 });

@@ -88,8 +88,10 @@ function envelopeKind(stdout) {
   return 'pass';
 }
 
-export function sampleViaCli(results, projects, { sample, dataDir, rng = Math.random }) {
-  const pool = [...results].sort(() => rng() - 0.5).slice(0, sample);
+export function sampleViaCli(results, projects, { sample, dataDir, rng = Math.random, cliEnv = {} }) {
+  // A crashed in-process result has no real decision to compare against; sampling it would
+  // compare the CLI's envelope to a stub, not a decision, so it never enters the pool.
+  const pool = [...results].filter((r) => r.status !== 'crashed').sort(() => rng() - 0.5).slice(0, sample);
   const mismatches = [];
   for (const r of pool) {
     const v = r.vector; const project = projects.get(v.lang);
@@ -98,7 +100,8 @@ export function sampleViaCli(results, projects, { sample, dataDir, rng = Math.ra
     try {
       const toolInput = v.tool === 'Bash' ? { command: v.input.command } : { file_path: path.resolve(project.dir, v.input.file_path) };
       const input = JSON.stringify({ hook_event_name: v.event, tool_name: v.tool, tool_input: toolInput, session_id: 'eval-cli', cwd: project.dir });
-      const p = spawnSync(process.execPath, [BIN, 'hook', v.event], { input, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: project.dir, CLAUDE_PLUGIN_DATA: dataDir, CC_HARNESS_EVAL_EXEC_FAIL: v.event === 'PostToolUse' ? '1' : '' } });
+      const p = spawnSync(process.execPath, [BIN, 'hook', v.event], { input, encoding: 'utf8', timeout: 30_000, env: { ...process.env, CLAUDE_PROJECT_DIR: project.dir, CLAUDE_PLUGIN_DATA: dataDir, CC_HARNESS_EVAL_EXEC_FAIL: v.event === 'PostToolUse' ? '1' : '', ...cliEnv } });
+      if (p.error || p.status !== 0) { mismatches.push({ id: v.id, inProcess: r.actual.kind, viaCli: p.error?.code ?? `exit ${p.status}` }); continue; }
       const viaCli = envelopeKind(p.stdout);
       if (viaCli !== r.actual.kind) mismatches.push({ id: v.id, inProcess: r.actual.kind, viaCli });
     } finally { for (const abs of created) fs.rmSync(abs, { force: true }); }
@@ -149,7 +152,7 @@ export function runSuite(opts = {}) {
     }
     // Projects stay alive (inside this try, before cleanup below) so the sampled CLI spawns
     // can reuse the same temp project dirs the in-process decisions were computed against.
-    if (opts.viaCli && results.length > 0) viaCli = sampleViaCli(results, projects, { sample: opts.sample ?? 100, dataDir });
+    if (opts.viaCli && results.length > 0) viaCli = sampleViaCli(results, projects, { sample: opts.sample ?? 100, dataDir, cliEnv: opts.cliEnv });
   } finally {
     for (const p of projects.values()) p.cleanup();
     fs.rmSync(dataDir, { recursive: true, force: true });
@@ -175,7 +178,7 @@ export function runSuite(opts = {}) {
   const has = (s) => results.some((r) => r.status === s);
   const exitCode = has('mismatch') || has('gap-closed') || has('crashed') || (viaCli && viaCli.mismatches.length > 0) ? 1 : has('unlabelled') ? 2 : 0;
   if (opts.json) fs.writeFileSync(opts.json, JSON.stringify(toJson(results, { exitCode, elapsedMs: Date.now() - t0, shadowed: shadowed.length, viaCli }), null, 2) + '\n');
-  return { results, exitCode, report, shadowed: shadowed.length };
+  return { results, exitCode, report, shadowed: shadowed.length, viaCli };
 }
 
 const VALUE_FLAGS = new Map([
@@ -212,6 +215,7 @@ function parseArgs(argv) {
     const n = Number(o.sample);
     if (!Number.isInteger(n) || n < 1) { process.stderr.write(`evals: --sample must be an integer >= 1\n`); process.exit(1); }
     o.sample = n;
+    if (!o.viaCli) process.stderr.write('evals: --sample has no effect without --via cli\n');
   }
   return o;
 }
@@ -220,8 +224,14 @@ if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) 
   const opts = parseArgs(process.argv.slice(2));
   const quiet = opts.quiet; opts.quiet = true;
   try {
-    const { exitCode, report } = runSuite(opts);
-    process.stdout.write(quiet ? report.trimEnd().split('\n').pop() + '\n' : report);   // quiet: summary line only
+    const { exitCode, report, viaCli } = runSuite(opts);
+    if (quiet) {
+      const summary = report.trimEnd().split('\n').pop();
+      const viaLine = viaCli ? `via cli: ${viaCli.checked} checked, ${viaCli.mismatches.length} envelope mismatches` : null;
+      process.stdout.write((viaLine ? viaLine + '\n' : '') + summary + '\n');   // quiet: via cli line (if any), then the summary line
+    } else {
+      process.stdout.write(report);
+    }
     process.exit(exitCode);
   } catch (e) {
     process.stderr.write(`evals: ${e.message}\n`);
