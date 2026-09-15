@@ -41,12 +41,27 @@ function normCwd(cwd) {
   return c.length >= 2 ? c : '';
 }
 
+// A cwd that names a home directory itself (no project subfolder) has the
+// username as its whole basename — use "home" instead of leaking it via note.
+function projectName(cwd) {
+  if (!cwd) return 'unknown';
+  const home = os.homedir().replace(/\/+$/, '');
+  if (cwd === home || /^\/(Users|home)\/[^/]+\/?$/.test(cwd)) return 'home';
+  return path.basename(cwd) || 'unknown';
+}
+
 // Relativize file_path against cwd when it lands inside cwd; otherwise keep it
 // absolute (redact() then scrubs any /Users/<name> or /home/<name> prefix).
 // Never falls back to process.cwd() — an absolute p is resolved in place.
+// Returns null when an already-relative path escapes its base (e.g. "../x") —
+// the caller drops that vector rather than ever store a path containing "..".
 function relOrAbs(cwd, p) {
   const norm = (s) => s.replace(/\\/g, '/');
-  if (!path.isAbsolute(p)) return norm(p);
+  if (!path.isAbsolute(p)) {
+    const n = path.posix.normalize(norm(p));
+    if (n.startsWith('..') || path.posix.isAbsolute(n)) return null;
+    return n;
+  }
   const abs = path.resolve(p);
   if (cwd) {
     const rel = path.relative(cwd, abs);
@@ -57,7 +72,13 @@ function relOrAbs(cwd, p) {
 
 export function toVector(use, { cwd, lang, touched, month, project }) {
   const isBash = use.tool === 'Bash';
-  const raw = isBash ? use.input.command : relOrAbs(cwd, use.input.file_path);
+  let raw;
+  if (isBash) {
+    raw = use.input.command;
+  } else {
+    raw = relOrAbs(cwd, use.input.file_path);
+    if (raw === null) return { dropped: 'escaping-path' };
+  }
   const r = redact(raw, { cwd });
   if (r.dropped) return { dropped: r.dropped };
   const input = isBash ? { command: r.text } : { file_path: r.text };
@@ -74,7 +95,7 @@ export function toVector(use, { cwd, lang, touched, month, project }) {
 
 export function mineFile(file, { fsm = fs } = {}) {
   const vectors = [];
-  const dropped = { secret: 0, 'sensitive-path': 0 };
+  const dropped = { secret: 0, 'sensitive-path': 0, 'escaping-path': 0 };
   const touched = new Set();
   const langCache = new Map();
   for (const line of fsm.readFileSync(file, 'utf8').split('\n')) {
@@ -87,7 +108,7 @@ export function mineFile(file, { fsm = fs } = {}) {
     const lang = langCache.get(cwd);
     const monthCandidate = String(rec.timestamp ?? '').slice(0, 7);
     const month = /^\d{4}-\d{2}$/.test(monthCandidate) ? monthCandidate : 'unknown';
-    const project = path.basename(cwd) || 'unknown';
+    const project = projectName(cwd);
     for (const use of uses) {
       const v = toVector(use, { cwd, lang, touched, month, project });
       if (v.dropped) dropped[v.dropped] += 1; else vectors.push(v);
@@ -108,11 +129,11 @@ function walk(dir, fsm) {
 export function mine({ from = DEFAULT_FROM, out = DEFAULT_OUT, fsm = fs, log = (s) => process.stdout.write(s + '\n') } = {}) {
   if (!fsm.existsSync(from)) throw new Error(`transcripts directory not found: ${from}`);
   const byLangNew = new Map();
-  const dropped = { secret: 0, 'sensitive-path': 0 };
+  const dropped = { secret: 0, 'sensitive-path': 0, 'escaping-path': 0 };
   const seen = new Set();
   for (const file of walk(from, fsm)) {
     const r = mineFile(file, { fsm });
-    dropped.secret += r.dropped.secret; dropped['sensitive-path'] += r.dropped['sensitive-path'];
+    dropped.secret += r.dropped.secret; dropped['sensitive-path'] += r.dropped['sensitive-path']; dropped['escaping-path'] += r.dropped['escaping-path'];
     for (const v of r.vectors) {
       if (seen.has(v.id)) continue;
       seen.add(v.id);
@@ -134,7 +155,7 @@ export function mine({ from = DEFAULT_FROM, out = DEFAULT_OUT, fsm = fs, log = (
     all.push(...existing, ...appended);
   }
   const longest = [...all].sort((a, b) => JSON.stringify(b.input).length - JSON.stringify(a.input).length).slice(0, LONGEST);
-  log(`mined ${added} new vector(s): ${Object.entries(byLang).map(([l, n]) => `${l}=${n}`).join(' ') || 'none'}; dropped secret=${dropped.secret} sensitive-path=${dropped['sensitive-path']}`);
+  log(`mined ${added} new vector(s): ${Object.entries(byLang).map(([l, n]) => `${l}=${n}`).join(' ') || 'none'}; dropped secret=${dropped.secret} sensitive-path=${dropped['sensitive-path']} escaping-path=${dropped['escaping-path']}`);
   log(`${longest.length} longest vectors (review before committing):`);
   for (const v of longest) log(`  ${v.id}  ${v.tool}  ${JSON.stringify(v.input.command ?? v.input.file_path).slice(0, 160)}`);
   return { added, byLang, dropped, longest };
