@@ -82,12 +82,22 @@ export function runSuite(opts = {}) {
   const corpusDir = path.resolve(opts.corpusDir ?? DEFAULT_CORPUS);
   const configsDir = path.resolve(opts.configsDir ?? DEFAULT_CONFIGS);
   if (!fs.existsSync(corpusDir)) throw new Error(`corpus directory not found: ${corpusDir}`);
-  const { vectors, byFile } = loadCorpus(corpusDir);
-  const seenIds = new Map();
-  for (const v of vectors) {
-    const prevFile = seenIds.get(v.id);
-    if (prevFile) throw new Error(`duplicate vector id ${v.id} in ${prevFile} and ${v.file}`);
-    seenIds.set(v.id, v.file);
+  const { vectors: rawVectors, byFile } = loadCorpus(corpusDir);
+  // A duplicate id where one copy is mined and the other adversarial is not an error: the
+  // adversarial corpus is hand-labelled and wins, the mined copy is dropped ("shadowed").
+  // A duplicate id within the same source is still a real error and throws.
+  const byId = new Map();
+  for (const v of rawVectors) { if (!byId.has(v.id)) byId.set(v.id, []); byId.get(v.id).push(v); }
+  const shadowed = [];
+  const vectors = [];
+  for (const v of rawVectors) {
+    const group = byId.get(v.id);
+    if (group.length === 1) { vectors.push(v); continue; }
+    if (group.length > 2 || group[0].source === group[1].source) {
+      throw new Error(`duplicate vector id ${v.id} in ${group[0].file} and ${group[1].file}`);
+    }
+    const adv = group.find((g) => g.source === 'adversarial');
+    if (v === adv) vectors.push(v); else shadowed.push({ id: v.id, file: v.file });
   }
   const langs = opts.lang ? new Set(String(opts.lang).split(',')) : null;
   const selected = vectors.filter((v) => (!langs || langs.has(v.lang)) && (!opts.source || v.source === opts.source));
@@ -127,12 +137,12 @@ export function runSuite(opts = {}) {
     }
     for (const file of touched) writeJsonl(file, byFile.get(file).map(({ file: _f, ...v }) => v));
   }
-  const report = formatReport(results, { elapsedMs: Date.now() - t0 });
+  const report = formatReport(results, { elapsedMs: Date.now() - t0, shadowed: shadowed.length });
   if (!opts.quiet) process.stdout.write(report);
   const has = (s) => results.some((r) => r.status === s);
   const exitCode = has('mismatch') || has('gap-closed') || has('crashed') ? 1 : has('unlabelled') ? 2 : 0;
-  if (opts.json) fs.writeFileSync(opts.json, JSON.stringify(toJson(results, { exitCode, elapsedMs: Date.now() - t0 }), null, 2) + '\n');
-  return { results, exitCode, report };
+  if (opts.json) fs.writeFileSync(opts.json, JSON.stringify(toJson(results, { exitCode, elapsedMs: Date.now() - t0, shadowed: shadowed.length }), null, 2) + '\n');
+  return { results, exitCode, report, shadowed: shadowed.length };
 }
 
 const VALUE_FLAGS = new Map([

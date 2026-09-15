@@ -53,8 +53,8 @@ test('mine: lang tag, fixture derivation, redaction, dedupe, merge with existing
     assert.ok(rows.every((v) => !JSON.stringify(v).includes('carol')));
     assert.ok(rows.every((v) => !JSON.stringify(v).includes('..')));
     assert.ok(rows.every((v) => v.note === `${path.basename(proj.dir)} 2026-08`));
-    assert.equal(rows[0].id, vectorId('ts', 'Bash', { command: 'npx vitest run src/a.test.ts' }));
-    assert.deepEqual(r.dropped, { secret: 1, 'sensitive-path': 1, 'escaping-path': 0 });
+    assert.equal(rows[0].id, vectorId('ts', 'PreToolUse', 'Bash', { command: 'npx vitest run src/a.test.ts' }));
+    assert.deepEqual(r.dropped, { secret: 1, 'sensitive-path': 1, 'escaping-path': 0, shadowed: 0 });
     assert.equal(r.added, 6);
     assert.deepEqual(r.byLang, { ts: 6 });
     assert.ok(log.some((s) => /longest/i.test(s)));
@@ -183,4 +183,34 @@ test('F2: a relative file_path that escapes upward is dropped as escaping-path; 
     assert.equal(r.dropped['escaping-path'], 1);
     assert.ok(rows.every((v) => !JSON.stringify(v).includes('..')));
   } finally { proj.cleanup(); from.cleanup(); out.cleanup(); }
+});
+
+// --- Fix round 1 (E4) -------------------------------------------------
+
+test('B1: a mined vector whose id already exists in the sibling adversarial corpus is shadowed, not re-mined', () => {
+  const proj = makeProject({ files: { 'package.json': '{}' } });
+  const from = makeDataDir(); const root = makeDataDir();
+  const out = path.join(root.dir, 'mined');
+  const adversarialDir = path.join(root.dir, 'adversarial');
+  fs.mkdirSync(out, { recursive: true });
+  fs.mkdirSync(adversarialDir, { recursive: true });
+  try {
+    const dir = path.join(from.dir, '-shadow-app'); fs.mkdirSync(dir);
+    const rec = {
+      type: 'assistant', cwd: proj.dir, timestamp: '2026-08-29T10:00:00.000Z',
+      message: { role: 'assistant', content: [{ type: 'tool_use', name: 'Bash', input: { command: 'npx vitest run src/a.test.ts' } }] },
+    };
+    fs.writeFileSync(path.join(dir, 's1.jsonl'), JSON.stringify(rec) + '\n');
+    const shadowId = vectorId('ts', 'PreToolUse', 'Bash', { command: 'npx vitest run src/a.test.ts' });
+    fs.writeFileSync(
+      path.join(adversarialDir, 'x.jsonl'),
+      JSON.stringify({ id: shadowId, lang: 'ts', event: 'PreToolUse', tool: 'Bash', input: { command: 'npx vitest run src/a.test.ts' }, expected: { kind: 'pass' }, source: 'adversarial', note: 'shadow' }) + '\n',
+    );
+    const log = [];
+    const r = mine({ from: from.dir, out, log: (s) => log.push(s) });
+    assert.equal(r.added, 0);
+    assert.equal(r.dropped.shadowed, 1);
+    assert.equal(fs.existsSync(path.join(out, 'ts.jsonl')), false);   // nothing left to write for this lang
+    assert.ok(log.some((s) => /shadowed=1/.test(s)), log.join('\n'));
+  } finally { proj.cleanup(); from.cleanup(); root.cleanup(); }
 });

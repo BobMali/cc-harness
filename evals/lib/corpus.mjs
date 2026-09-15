@@ -13,8 +13,8 @@ export function normalisePayload(tool, input = {}) {
   return s.replace(/[ \t]+/g, ' ').replace(/[ \t]*\n[ \t]*/g, '\n').trim();
 }
 
-export function vectorId(lang, tool, input, fixtureExists = false) {
-  const key = `${lang}|${tool}|${normalisePayload(tool, input)}${fixtureExists ? '|exists' : ''}`;
+export function vectorId(lang, event, tool, input, fixtureExists = false) {
+  const key = `${lang}|${event}|${tool}|${normalisePayload(tool, input)}${fixtureExists ? '|exists' : ''}`;
   return `${lang}-${crypto.createHash('sha1').update(key).digest('hex').slice(0, 6)}`;
 }
 

@@ -15,7 +15,7 @@ export function matrix(results) {
 
 const pad = (s, n) => String(s).padEnd(n);
 
-export function formatReport(results, { elapsedMs = 0 } = {}) {
+export function formatReport(results, { elapsedMs = 0, shadowed = 0 } = {}) {
   const lines = [];
   const m = matrix(results);
   lines.push(`${pad('lang', 6)}| ${pad('guard', 9)}| ${KINDS.map((k) => pad(k, 6)).join('| ')}`);
@@ -33,6 +33,7 @@ export function formatReport(results, { elapsedMs = 0 } = {}) {
   if (by('gap-closed').length) { lines.push('', `gap closed — remove known_gap (${by('gap-closed').length}):`); for (const r of by('gap-closed')) lines.push(describe(r)); }
   if (by('known-gap').length) { lines.push('', `known gaps: ${by('known-gap').length}`); for (const r of by('known-gap')) lines.push(describe(r), line2(r)); }
   if (by('unlabelled').length) { lines.push('', `unlabelled: ${by('unlabelled').length} (run with --update to accept current decisions)`); }
+  if (shadowed) { lines.push('', `shadowed by adversarial: ${shadowed}`); }
   lines.push('', `total ${results.length} · matched ${by('match').length} · mismatched ${by('mismatch').length} · unlabelled ${by('unlabelled').length} · known gaps ${by('known-gap').length} · gap closed ${by('gap-closed').length} · crashed ${by('crashed').length} · ${(elapsedMs / 1000).toFixed(2)}s`);
   return lines.join('\n') + '\n';
 }
@@ -44,7 +45,7 @@ export function toJson(results, meta = {}) {
     schemaVersion: 1,
     ...meta,
     matrix: matrix(results),
-    totals: Object.fromEntries(['match', 'mismatch', 'unlabelled', 'known-gap', 'gap-closed', 'crashed'].map((s) => [s, results.filter((r) => r.status === s).length])),
+    totals: { ...Object.fromEntries(['match', 'mismatch', 'unlabelled', 'known-gap', 'gap-closed', 'crashed'].map((s) => [s, results.filter((r) => r.status === s).length])), shadowed: meta.shadowed ?? 0 },
     results: results.map((r) => ({ id: r.vector.id, lang: r.vector.lang, source: r.vector.source, status: r.status, expected: r.vector.expected, actual: { kind: r.actual.kind, guard: r.actual.guard, reason: r.actual.reason } })),
   };
 }
