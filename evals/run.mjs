@@ -19,17 +19,24 @@ const STUB_EXEC = () => ({ status: 0, output: '' });
 const FAIL_EXEC = () => ({ status: 1, output: 'eval: forced failure' });   // PostToolUse: makes "armed" observable as block
 
 export function makeLangProject(lang, configsDir = DEFAULT_CONFIGS) {
+  const configFile = path.join(configsDir, `${lang}.json`);
+  if (!fs.existsSync(configFile)) throw new Error(`no config for lang "${lang}" in ${configsDir}`);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), `cc-harness-eval-${lang}-`));
-  fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
-  fs.copyFileSync(path.join(configsDir, `${lang}.json`), path.join(dir, '.claude', 'harness.json'));
-  const loaded = loadConfig(dir);
-  if (loaded.status !== 'ok') throw new Error(`config ${lang}: ${loaded.status} ${JSON.stringify(loaded.errors ?? [])}`);
-  const marker = loaded.config.project.markerFile || MARKERS[lang];
-  if (marker) writeEmpty(path.join(dir, marker));
-  fs.mkdirSync(path.join(dir, 'githooks'), { recursive: true });
-  fs.writeFileSync(path.join(dir, 'githooks', 'conventional-regex.txt'), REGEX_FILE);
-  for (const c of loaded.config.checks) if (c.ifExists) writeEmpty(path.join(dir, c.ifExists));   // so no check is skipped; exec is stubbed anyway
-  return { dir, lang, config: loaded.config, cleanup: () => fs.rmSync(dir, { recursive: true, force: true }) };
+  try {
+    fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
+    fs.copyFileSync(configFile, path.join(dir, '.claude', 'harness.json'));
+    const loaded = loadConfig(dir);
+    if (loaded.status !== 'ok') throw new Error(`config ${lang}: ${loaded.status} ${JSON.stringify(loaded.errors ?? [])}`);
+    const marker = loaded.config.project.markerFile || MARKERS[lang];
+    if (marker) writeEmpty(path.join(dir, marker));
+    fs.mkdirSync(path.join(dir, 'githooks'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'githooks', 'conventional-regex.txt'), REGEX_FILE);
+    for (const c of loaded.config.checks) if (c.ifExists) writeEmpty(path.join(dir, c.ifExists));   // so no check is skipped; exec is stubbed anyway
+    return { dir, lang, config: loaded.config, cleanup: () => fs.rmSync(dir, { recursive: true, force: true }) };
+  } catch (e) {
+    fs.rmSync(dir, { recursive: true, force: true });
+    throw e;
+  }
 }
 
 function writeEmpty(abs) { fs.mkdirSync(path.dirname(abs), { recursive: true }); if (!fs.existsSync(abs)) { fs.writeFileSync(abs, ''); return true; } return false; }
@@ -49,7 +56,9 @@ export function evaluateVector(vector, project, dataDir) {
       : { file_path: path.resolve(project.dir, vector.input.file_path) };
     const input = { hook_event_name: vector.event, tool_name: vector.tool, tool_input: toolInput, session_id: 'eval', cwd: project.dir };
     const ctx = { event: vector.event, input, config: project.config, projectDir: project.dir, dataDir, pluginRoot: pluginRoot(), exec: vector.event === 'PostToolUse' ? FAIL_EXEC : STUB_EXEC, fs, now: () => Date.now() };
-    const results = evaluateGuards(vector.event, ctx);
+    const crashed = [];
+    const results = evaluateGuards(vector.event, ctx, { onError: (g, e) => crashed.push({ guard: g.name, message: e.message }) });
+    if (crashed.length) return { kind: 'crashed', guard: crashed[0].guard, reason: crashed[0].message };
     const d = pickDecision(results.map((r) => r.decision));
     if (!d) return { kind: 'pass', guard: null, reason: null };
     const guard = results.find((r) => r.decision === d)?.guard ?? null;
@@ -60,6 +69,7 @@ export function evaluateVector(vector, project, dataDir) {
 }
 
 export function compare(vector, actual) {
+  if (actual.kind === 'crashed') return 'crashed';
   const e = vector.expected;
   if (!e) return 'unlabelled';
   const same = e.kind === actual.kind && (!e.guard || e.guard === actual.guard);
@@ -71,9 +81,20 @@ export function runSuite(opts = {}) {
   const t0 = Date.now();
   const corpusDir = path.resolve(opts.corpusDir ?? DEFAULT_CORPUS);
   const configsDir = path.resolve(opts.configsDir ?? DEFAULT_CONFIGS);
+  if (!fs.existsSync(corpusDir)) throw new Error(`corpus directory not found: ${corpusDir}`);
   const { vectors, byFile } = loadCorpus(corpusDir);
+  const seenIds = new Map();
+  for (const v of vectors) {
+    const prevFile = seenIds.get(v.id);
+    if (prevFile) throw new Error(`duplicate vector id ${v.id} in ${prevFile} and ${v.file}`);
+    seenIds.set(v.id, v.file);
+  }
   const langs = opts.lang ? new Set(String(opts.lang).split(',')) : null;
   const selected = vectors.filter((v) => (!langs || langs.has(v.lang)) && (!opts.source || v.source === opts.source));
+  if (selected.length === 0) {
+    const filters = JSON.stringify({ lang: opts.lang ?? null, source: opts.source ?? null, guard: opts.guard ?? null });
+    throw new Error(`no vectors selected (corpus ${corpusDir}, filters ${filters})`);
+  }
   for (const v of selected) { const errs = validateVector(v); if (errs.length) throw new Error(`${v.file}: ${v.id}: ${errs.join('; ')}`); }
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-harness-eval-data-'));
   const projects = new Map();
@@ -104,22 +125,30 @@ export function runSuite(opts = {}) {
   const report = formatReport(results, { elapsedMs: Date.now() - t0 });
   if (!opts.quiet) process.stdout.write(report);
   const has = (s) => results.some((r) => r.status === s);
-  const exitCode = has('mismatch') || has('gap-closed') ? 1 : has('unlabelled') ? 2 : 0;
+  const exitCode = has('mismatch') || has('gap-closed') || has('crashed') ? 1 : has('unlabelled') ? 2 : 0;
   if (opts.json) fs.writeFileSync(opts.json, JSON.stringify(toJson(results, { exitCode, elapsedMs: Date.now() - t0 }), null, 2) + '\n');
   return { results, exitCode, report };
 }
+
+const VALUE_FLAGS = new Map([
+  ['--corpus', 'corpusDir'],
+  ['--configs', 'configsDir'],
+  ['--lang', 'lang'],
+  ['--source', 'source'],
+  ['--guard', 'guard'],
+  ['--json', 'json'],
+]);
 
 function parseArgs(argv) {
   const o = {};
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    const val = () => argv[++i];
-    if (a === '--corpus') o.corpusDir = val();
-    else if (a === '--configs') o.configsDir = val();
-    else if (a === '--lang') o.lang = val();
-    else if (a === '--source') o.source = val();
-    else if (a === '--guard') o.guard = val();
-    else if (a === '--json') o.json = val();
+    if (VALUE_FLAGS.has(a)) {
+      const v = argv[i + 1];
+      if (v === undefined || v.startsWith('--')) { process.stderr.write(`evals: ${a} requires a value\n`); process.exit(1); }
+      o[VALUE_FLAGS.get(a)] = v;
+      i++;
+    }
     else if (a === '--update') o.update = true;
     else if (a === '--quiet') o.quiet = true;
     else { process.stderr.write(`unknown option ${a}\n`); process.exit(1); }
@@ -130,7 +159,12 @@ function parseArgs(argv) {
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
   const opts = parseArgs(process.argv.slice(2));
   const quiet = opts.quiet; opts.quiet = true;
-  const { exitCode, report } = runSuite(opts);
-  process.stdout.write(quiet ? report.trimEnd().split('\n').pop() + '\n' : report);   // quiet: summary line only
-  process.exit(exitCode);
+  try {
+    const { exitCode, report } = runSuite(opts);
+    process.stdout.write(quiet ? report.trimEnd().split('\n').pop() + '\n' : report);   // quiet: summary line only
+    process.exit(exitCode);
+  } catch (e) {
+    process.stderr.write(`evals: ${e.message}\n`);
+    process.exit(1);
+  }
 }
