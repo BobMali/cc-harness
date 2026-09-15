@@ -211,11 +211,32 @@ test('minor 5: toJson results include the actual reason', () => {
   } finally { c.cleanup(); }
 });
 
-test('minor 6: runSuite throws on a duplicate vector id across files', () => {
+// --- Fix round 1 (E4) -------------------------------------------------
+
+test('B2: a duplicate id where one copy is mined and the other adversarial is shadowed, not thrown', () => {
   const c = copyFixture();
   try {
+    // ts-000010 already exists in adversarial/git.jsonl (see the fixture corpus); a mined
+    // vector minted with the same id is shadowed rather than causing a duplicate-id error.
     const dup = { id: 'ts-000010', lang: 'ts', event: 'PreToolUse', tool: 'Bash', input: { command: 'git status' }, expected: { kind: 'pass' }, source: 'mined', note: 'dup of an adversarial id' };
     fs.writeFileSync(path.join(c.dir, 'mined', 'dup.jsonl'), JSON.stringify(dup) + '\n');
-    assert.throws(() => runSuite({ corpusDir: c.dir, configsDir: CONFIGS, quiet: true }), /duplicate vector id ts-000010/);
+    const r = runSuite({ corpusDir: c.dir, configsDir: CONFIGS, quiet: true });
+    assert.equal(r.shadowed, 1);
+    assert.ok(!r.results.some((x) => x.vector.id === 'ts-000010' && x.vector.source === 'mined'));
+    assert.ok(r.results.some((x) => x.vector.id === 'ts-000010' && x.vector.source === 'adversarial'));
+    assert.match(r.report, /shadowed by adversarial: 1/);
+    const j = toJson(r.results, { shadowed: r.shadowed });
+    assert.equal(j.totals.shadowed, 1);
+  } finally { c.cleanup(); }
+});
+
+test('B2: a duplicate id within the same source still throws', () => {
+  const c = copyFixture();
+  try {
+    // ts-000003 already exists in mined/ts.jsonl; a second mined copy of the same id is a
+    // real duplicate, not a cross-source shadow, and must still throw.
+    const dup = { id: 'ts-000003', lang: 'ts', event: 'PreToolUse', tool: 'Edit', input: { file_path: 'src/other.test.ts' }, expected: { kind: 'ask', guard: 'test' }, source: 'mined', note: 'dup of a mined id' };
+    fs.writeFileSync(path.join(c.dir, 'mined', 'dup.jsonl'), JSON.stringify(dup) + '\n');
+    assert.throws(() => runSuite({ corpusDir: c.dir, configsDir: CONFIGS, quiet: true }), /duplicate vector id ts-000003/);
   } finally { c.cleanup(); }
 });

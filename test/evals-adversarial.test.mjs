@@ -15,7 +15,7 @@ test('adversarial vectors are well-formed with correct ids and unique', () => {
   const ids = new Set();
   for (const v of adv) {
     assert.deepEqual(validateVector(v), [], v.id);
-    assert.equal(v.id, vectorId(v.lang, v.tool, v.input, Boolean(v.fixture)), `${v.id}: ${JSON.stringify(v.input)}`);
+    assert.equal(v.id, vectorId(v.lang, v.event, v.tool, v.input, Boolean(v.fixture)), `${v.id}: ${JSON.stringify(v.input)}`);
     assert.ok(v.expected, `${v.id} must be labelled`);
     assert.ok(!ids.has(v.id), `duplicate ${v.id}`); ids.add(v.id);
     assert.ok(v.note, `${v.id} needs a note naming its bypass class`);

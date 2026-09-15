@@ -12,12 +12,13 @@ test('normalisePayload collapses whitespace and picks the right field', () => {
 });
 
 test('vectorId is stable and whitespace-insensitive', () => {
-  const a = vectorId('go', 'Bash', { command: 'go test ./...' });
+  const a = vectorId('go', 'PreToolUse', 'Bash', { command: 'go test ./...' });
   assert.match(a, /^go-[0-9a-f]{6}$/);
-  assert.equal(a, vectorId('go', 'Bash', { command: 'go   test ./...' }));
-  assert.notEqual(a, vectorId('ts', 'Bash', { command: 'go test ./...' }));
-  assert.notEqual(a, vectorId('go', 'Edit', { file_path: 'go test ./...' }));
-  assert.notEqual(vectorId('ts', 'Write', { file_path: 'a' }, true), vectorId('ts', 'Write', { file_path: 'a' }));
+  assert.equal(a, vectorId('go', 'PreToolUse', 'Bash', { command: 'go   test ./...' }));
+  assert.notEqual(a, vectorId('ts', 'PreToolUse', 'Bash', { command: 'go test ./...' }));
+  assert.notEqual(a, vectorId('go', 'PreToolUse', 'Edit', { file_path: 'go test ./...' }));
+  assert.notEqual(a, vectorId('go', 'PostToolUse', 'Bash', { command: 'go test ./...' }));   // event is part of the key
+  assert.notEqual(vectorId('ts', 'PreToolUse', 'Write', { file_path: 'a' }, true), vectorId('ts', 'PreToolUse', 'Write', { file_path: 'a' }));
 });
 
 test('readJsonl / writeJsonl round-trip; bad lines report file:line', () => {

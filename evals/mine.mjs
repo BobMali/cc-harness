@@ -88,7 +88,7 @@ export function toVector(use, { cwd, lang, touched, month, project }) {
     if (existed) fixture = { exists: [r.text] };
     touched.add(r.text);
   }
-  const v = { id: vectorId(lang, use.tool, input, Boolean(fixture)), lang, event: 'PreToolUse', tool: use.tool, input };
+  const v = { id: vectorId(lang, 'PreToolUse', use.tool, input, Boolean(fixture)), lang, event: 'PreToolUse', tool: use.tool, input };
   if (fixture) v.fixture = fixture;
   return { ...v, expected: null, source: 'mined', note: `${project} ${month}` };
 }
@@ -129,12 +129,23 @@ function walk(dir, fsm) {
 export function mine({ from = DEFAULT_FROM, out = DEFAULT_OUT, fsm = fs, log = (s) => process.stdout.write(s + '\n') } = {}) {
   if (!fsm.existsSync(from)) throw new Error(`transcripts directory not found: ${from}`);
   const byLangNew = new Map();
-  const dropped = { secret: 0, 'sensitive-path': 0, 'escaping-path': 0 };
+  const dropped = { secret: 0, 'sensitive-path': 0, 'escaping-path': 0, shadowed: 0 };
   const seen = new Set();
+  // A new vector whose id already exists in the sibling adversarial corpus is shadowed:
+  // the adversarial corpus already labels that exact (lang, event, tool, input, fixture)
+  // and mining it again would just be a duplicate id waiting to collide at eval time.
+  const adversarialDir = path.join(out, '..', 'adversarial');
+  const adversarialIds = new Set();
+  if (fsm.existsSync(adversarialDir)) {
+    for (const f of fsm.readdirSync(adversarialDir).filter((x) => x.endsWith('.jsonl'))) {
+      for (const row of readJsonl(path.join(adversarialDir, f))) adversarialIds.add(row.id);
+    }
+  }
   for (const file of walk(from, fsm)) {
     const r = mineFile(file, { fsm });
     dropped.secret += r.dropped.secret; dropped['sensitive-path'] += r.dropped['sensitive-path']; dropped['escaping-path'] += r.dropped['escaping-path'];
     for (const v of r.vectors) {
+      if (adversarialIds.has(v.id)) { dropped.shadowed += 1; continue; }
       if (seen.has(v.id)) continue;
       seen.add(v.id);
       if (!byLangNew.has(v.lang)) byLangNew.set(v.lang, []);
@@ -155,7 +166,7 @@ export function mine({ from = DEFAULT_FROM, out = DEFAULT_OUT, fsm = fs, log = (
     all.push(...existing, ...appended);
   }
   const longest = [...all].sort((a, b) => JSON.stringify(b.input).length - JSON.stringify(a.input).length).slice(0, LONGEST);
-  log(`mined ${added} new vector(s): ${Object.entries(byLang).map(([l, n]) => `${l}=${n}`).join(' ') || 'none'}; dropped secret=${dropped.secret} sensitive-path=${dropped['sensitive-path']} escaping-path=${dropped['escaping-path']}`);
+  log(`mined ${added} new vector(s): ${Object.entries(byLang).map(([l, n]) => `${l}=${n}`).join(' ') || 'none'}; dropped secret=${dropped.secret} sensitive-path=${dropped['sensitive-path']} escaping-path=${dropped['escaping-path']} shadowed=${dropped.shadowed}`);
   log(`${longest.length} longest vectors (review before committing):`);
   for (const v of longest) log(`  ${v.id}  ${v.tool}  ${JSON.stringify(v.input.command ?? v.input.file_path).slice(0, 160)}`);
   return { added, byLang, dropped, longest };
