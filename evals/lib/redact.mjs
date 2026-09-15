@@ -19,9 +19,12 @@ export const SENSITIVE_PATHS = [
   /(^|[/\s"'])id_(?:rsa|dsa|ecdsa|ed25519)\b/, /\.(?:pem|p12|pfx)\b/,
 ];
 
+function escapeRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
 export function redact(text, { cwd } = {}) {
   let t = String(text);
-  if (cwd) t = t.split(cwd.replace(/\/+$/, '')).join('.');
+  const c = cwd ? cwd.replace(/\/+$/, '') : '';
+  if (c.length >= 2) t = t.replace(new RegExp(`${escapeRe(c)}(?=/|\\s|["']|$)`, 'g'), '.');
   t = t.replace(/\/Users\/[^/\s"':;]+/g, '~').replace(/\/home\/[^/\s"':;]+/g, '~');
   if (SECRET_PATTERNS.some((re) => re.test(t))) return { text: t, dropped: 'secret' };
   if (SENSITIVE_PATHS.some((re) => re.test(t))) return { text: t, dropped: 'sensitive-path' };

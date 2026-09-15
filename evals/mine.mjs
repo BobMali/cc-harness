@@ -36,11 +36,28 @@ export function extractToolUses(record) {
   return out;
 }
 
-const relPath = (cwd, p) => (path.isAbsolute(p) ? path.relative(cwd, p) : p).replace(/\\/g, '/');
+function normCwd(cwd) {
+  const c = typeof cwd === 'string' ? cwd.replace(/\/+$/, '') : '';
+  return c.length >= 2 ? c : '';
+}
+
+// Relativize file_path against cwd when it lands inside cwd; otherwise keep it
+// absolute (redact() then scrubs any /Users/<name> or /home/<name> prefix).
+// Never falls back to process.cwd() — an absolute p is resolved in place.
+function relOrAbs(cwd, p) {
+  const norm = (s) => s.replace(/\\/g, '/');
+  if (!path.isAbsolute(p)) return norm(p);
+  const abs = path.resolve(p);
+  if (cwd) {
+    const rel = path.relative(cwd, abs);
+    if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) return norm(rel);
+  }
+  return norm(abs);
+}
 
 export function toVector(use, { cwd, lang, touched, month, project }) {
   const isBash = use.tool === 'Bash';
-  const raw = isBash ? use.input.command : relPath(cwd, use.input.file_path);
+  const raw = isBash ? use.input.command : relOrAbs(cwd, use.input.file_path);
   const r = redact(raw, { cwd });
   if (r.dropped) return { dropped: r.dropped };
   const input = isBash ? { command: r.text } : { file_path: r.text };
@@ -65,10 +82,11 @@ export function mineFile(file, { fsm = fs } = {}) {
     let rec; try { rec = JSON.parse(line); } catch { continue; }
     const uses = extractToolUses(rec);
     if (!uses.length) continue;
-    const cwd = typeof rec.cwd === 'string' ? rec.cwd : '';
+    const cwd = normCwd(rec.cwd);
     if (!langCache.has(cwd)) langCache.set(cwd, detectLang(cwd, fsm));
     const lang = langCache.get(cwd);
-    const month = String(rec.timestamp ?? '').slice(0, 7) || 'unknown';
+    const monthCandidate = String(rec.timestamp ?? '').slice(0, 7);
+    const month = /^\d{4}-\d{2}$/.test(monthCandidate) ? monthCandidate : 'unknown';
     const project = path.basename(cwd) || 'unknown';
     for (const use of uses) {
       const v = toVector(use, { cwd, lang, touched, month, project });
@@ -88,6 +106,7 @@ function walk(dir, fsm) {
 }
 
 export function mine({ from = DEFAULT_FROM, out = DEFAULT_OUT, fsm = fs, log = (s) => process.stdout.write(s + '\n') } = {}) {
+  if (!fsm.existsSync(from)) throw new Error(`transcripts directory not found: ${from}`);
   const byLangNew = new Map();
   const dropped = { secret: 0, 'sensitive-path': 0 };
   const seen = new Set();
@@ -121,8 +140,26 @@ export function mine({ from = DEFAULT_FROM, out = DEFAULT_OUT, fsm = fs, log = (
   return { added, byLang, dropped, longest };
 }
 
+function parseArgs(argv) {
+  const o = {};
+  const FLAGS = new Map([['--from', 'from'], ['--out', 'out']]);
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (!FLAGS.has(a)) { process.stderr.write(`unknown option ${a}\n`); process.exit(1); }
+    const v = argv[i + 1];
+    if (v === undefined || v.startsWith('--')) { process.stderr.write(`${a} requires a value\n`); process.exit(1); }
+    o[FLAGS.get(a)] = v;
+    i++;
+  }
+  return o;
+}
+
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
-  const a = process.argv.slice(2);
-  const val = (f) => { const i = a.indexOf(f); return i === -1 ? undefined : a[i + 1]; };
-  mine({ from: val('--from'), out: val('--out') });
+  const opts = parseArgs(process.argv.slice(2));
+  try {
+    mine(opts);
+  } catch (e) {
+    process.stderr.write(`${e.message}\n`);
+    process.exit(1);
+  }
 }

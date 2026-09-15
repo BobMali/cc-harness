@@ -60,3 +60,17 @@ test('long commands are truncated; long heredoc bodies are elided', () => {
   const short = redact(`cat <<EOF\na\nb\nEOF`, { cwd });
   assert.equal(short.text, `cat <<EOF\na\nb\nEOF`);
 });
+
+// --- Fix round 1 -------------------------------------------------------
+
+test('C1: a cwd of "/" (or otherwise too short) does not disable redaction', () => {
+  assert.equal(redact('export GITHUB_TOKEN=abc', { cwd: '/' }).dropped, 'secret');
+  assert.equal(redact('cat /home/bob/.env', { cwd: '/' }).dropped, 'sensitive-path');
+});
+
+test('C1: the cwd substitution is anchored to a path boundary', () => {
+  // cwd is "/Users/alice/app"; the text has "/Users/alice/app-other/..." which must
+  // NOT be treated as cwd + "-other/..." (that would eat part of a sibling dir name).
+  const r = redact('cat /Users/alice/app-other/x.ts', { cwd: '/Users/alice/app' });
+  assert.equal(r.text, 'cat ~/app-other/x.ts');
+});
