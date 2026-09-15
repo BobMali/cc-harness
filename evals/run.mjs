@@ -97,11 +97,12 @@ export function runSuite(opts = {}) {
   }
   for (const v of selected) { const errs = validateVector(v); if (errs.length) throw new Error(`${v.file}: ${v.id}: ${errs.join('; ')}`); }
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-harness-eval-data-'));
+  const projectFactory = opts.projectFactory ?? makeLangProject;
   const projects = new Map();
   const results = [];
   try {
     for (const v of selected) {
-      if (!projects.has(v.lang)) projects.set(v.lang, makeLangProject(v.lang, configsDir));
+      if (!projects.has(v.lang)) projects.set(v.lang, projectFactory(v.lang, configsDir));
       const actual = evaluateVector(v, projects.get(v.lang), dataDir);
       if (opts.guard && actual.guard !== opts.guard && !(v.expected?.guard === opts.guard)) continue;
       results.push({ vector: v, actual, status: compare(v, actual) });
@@ -109,6 +110,10 @@ export function runSuite(opts = {}) {
   } finally {
     for (const p of projects.values()) p.cleanup();
     fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+  if (results.length === 0) {
+    const filters = JSON.stringify({ lang: opts.lang ?? null, source: opts.source ?? null, guard: opts.guard ?? null });
+    throw new Error(`no vectors selected after filters (corpus ${corpusDir}, filters ${filters})`);
   }
   if (opts.update) {
     const touched = new Set();

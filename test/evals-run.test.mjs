@@ -100,6 +100,13 @@ test('F1b: runSuite throws when no vectors are selected', () => {
   } finally { c.cleanup(); }
 });
 
+test('fix round 2, item 1: runSuite throws when the --guard post-filter empties the results', () => {
+  const c = copyFixture();
+  try {
+    assert.throws(() => runSuite({ corpusDir: c.dir, configsDir: CONFIGS, quiet: true, guard: 'nope' }), /no vectors selected after filters/);
+  } finally { c.cleanup(); }
+});
+
 test('F1c: parseArgs rejects a flag missing its value, or one shaped like another flag', () => {
   const missing = spawnSync(process.execPath, [path.join(ROOT, 'evals', 'run.mjs'), '--corpus'], { encoding: 'utf8' });
   assert.equal(missing.status, 1); assert.match(missing.stderr, /--corpus/);
@@ -133,26 +140,31 @@ test('F2: compare reports "crashed" regardless of expected', () => {
   assert.equal(compare({ expected: null }, { kind: 'crashed' }), 'crashed');
 });
 
-test('F2: runSuite reports a crashed guard exec, not a false decision, and never labels it on --update', () => {
-  const c = copyFixture();
+test('F2: runSuite reports a crashed guard exec via an injected projectFactory, not a false decision, and never labels it on --update', () => {
+  const data = makeDataDir();
+  const corpusDir = path.join(data.dir, 'corpus');
   try {
-    // crash injection: commit.mjs's readFile callback does existsSync -> readFileSync without
-    // guarding against a directory (EISDIR); "githooks" always exists in a makeLangProject
-    // fixture. If that guard bug is ever fixed (readFile returns null for a directory), this
-    // vector will stop crashing and needs a different injection.
-    const crashVector = { id: 'ts-000099', lang: 'ts', event: 'PreToolUse', tool: 'Bash', input: { command: 'git commit -F githooks' }, expected: null, source: 'mined', note: 'forced crash: -F names an existing directory, not a file' };
-    fs.writeFileSync(path.join(c.dir, 'mined', 'crash.jsonl'), JSON.stringify(crashVector) + '\n');
+    const crashVector = { id: 'ts-000099', lang: 'ts', event: 'PreToolUse', tool: 'Bash', input: { command: 'git status' }, expected: null, source: 'mined', note: 'forced crash: injected project has no config.commands' };
+    fs.mkdirSync(path.join(corpusDir, 'mined'), { recursive: true });
+    fs.writeFileSync(path.join(corpusDir, 'mined', 'crash.jsonl'), JSON.stringify(crashVector) + '\n');
 
-    const r = runSuite({ corpusDir: c.dir, configsDir: CONFIGS, quiet: true });
+    // deterministic crash independent of any guard implementation bug: a project whose config
+    // is missing `commands` makes every Pre/PostToolUse guard that reads config.commands.* throw.
+    const brokenFactory = (lang, configsDir) => {
+      const proj = makeLangProject(lang, configsDir);
+      return { ...proj, config: { ...proj.config, commands: undefined } };
+    };
+
+    const r = runSuite({ corpusDir, configsDir: CONFIGS, quiet: true, projectFactory: brokenFactory });
     assert.equal(r.exitCode, 1);
     assert.match(r.report, /crashed \(1\)/);
     const by = Object.fromEntries(r.results.map((x) => [x.vector.id, x.status]));
     assert.equal(by['ts-000099'], 'crashed');
 
-    runSuite({ corpusDir: c.dir, configsDir: CONFIGS, quiet: true, update: true });
-    const crashFile = readJsonl(path.join(c.dir, 'mined', 'crash.jsonl'));
+    runSuite({ corpusDir, configsDir: CONFIGS, quiet: true, update: true, projectFactory: brokenFactory });
+    const crashFile = readJsonl(path.join(corpusDir, 'mined', 'crash.jsonl'));
     assert.equal(crashFile.find((v) => v.id === 'ts-000099').expected, null);   // --update never labels a crashed vector
-  } finally { c.cleanup(); }
+  } finally { data.cleanup(); }
 });
 
 test('minor 3: makeLangProject with no config for a lang throws and leaves no temp dir', () => {
