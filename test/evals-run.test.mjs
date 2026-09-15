@@ -1,11 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { runSuite, evaluateVector, makeLangProject, compare } from '../evals/run.mjs';
 import { readJsonl } from '../evals/lib/corpus.mjs';
+import { toJson } from '../evals/lib/report.mjs';
 import { makeDataDir } from './helpers/project.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -82,5 +84,126 @@ test('filters and CLI entry', () => {
     const p = spawnSync(process.execPath, [path.join(ROOT, 'evals', 'run.mjs'), '--corpus', c.dir, '--configs', CONFIGS, '--quiet'], { encoding: 'utf8' });
     assert.equal(p.status, 1);      // the fixture holds a deliberate mismatch
     assert.match(p.stdout, /unlabelled 1/);
+  } finally { c.cleanup(); }
+});
+
+// --- Fix round 1 -----------------------------------------------------------
+
+test('F1a: runSuite throws when the corpus directory does not exist', () => {
+  assert.throws(() => runSuite({ corpusDir: '/nonexistent-corpus-dir', configsDir: CONFIGS, quiet: true }), /corpus directory not found/);
+});
+
+test('F1b: runSuite throws when no vectors are selected', () => {
+  const c = copyFixture();
+  try {
+    assert.throws(() => runSuite({ corpusDir: c.dir, configsDir: CONFIGS, quiet: true, lang: 'zz' }), /no vectors selected/);
+  } finally { c.cleanup(); }
+});
+
+test('F1c: parseArgs rejects a flag missing its value, or one shaped like another flag', () => {
+  const missing = spawnSync(process.execPath, [path.join(ROOT, 'evals', 'run.mjs'), '--corpus'], { encoding: 'utf8' });
+  assert.equal(missing.status, 1); assert.match(missing.stderr, /--corpus/);
+
+  const flagShaped = spawnSync(process.execPath, [path.join(ROOT, 'evals', 'run.mjs'), '--corpus', '--quiet'], { encoding: 'utf8' });
+  assert.equal(flagShaped.status, 1); assert.match(flagShaped.stderr, /--corpus/);
+
+  const lastToken = spawnSync(process.execPath, [path.join(ROOT, 'evals', 'run.mjs'), '--lang'], { encoding: 'utf8' });
+  assert.equal(lastToken.status, 1); assert.match(lastToken.stderr, /--lang/);
+});
+
+test('F1: the CLI surfaces a runSuite error as "evals: <message>" and exits 1', () => {
+  const p = spawnSync(process.execPath, [path.join(ROOT, 'evals', 'run.mjs'), '--corpus', '/nonexistent-corpus-dir', '--configs', CONFIGS, '--quiet'], { encoding: 'utf8' });
+  assert.equal(p.status, 1);
+  assert.match(p.stderr, /evals: corpus directory not found/);
+});
+
+test('F2: evaluateVector reports a guard crash as kind "crashed", not a real decision', () => {
+  const proj = makeLangProject('ts', CONFIGS); const data = makeDataDir();
+  try {
+    const broken = { ...proj, config: { ...proj.config, commands: undefined } };
+    const r = evaluateVector({ lang: 'ts', event: 'PreToolUse', tool: 'Bash', input: { command: 'git commit -m "x"' } }, broken, data.dir);
+    assert.equal(r.kind, 'crashed');
+    assert.ok(r.guard);
+    assert.ok(r.reason);
+  } finally { proj.cleanup(); data.cleanup(); }
+});
+
+test('F2: compare reports "crashed" regardless of expected', () => {
+  assert.equal(compare({ expected: { kind: 'pass' } }, { kind: 'crashed' }), 'crashed');
+  assert.equal(compare({ expected: null }, { kind: 'crashed' }), 'crashed');
+});
+
+test('F2: runSuite reports a crashed guard exec, not a false decision, and never labels it on --update', () => {
+  const c = copyFixture();
+  try {
+    // crash injection: commit.mjs's readFile callback does existsSync -> readFileSync without
+    // guarding against a directory (EISDIR); "githooks" always exists in a makeLangProject
+    // fixture. If that guard bug is ever fixed (readFile returns null for a directory), this
+    // vector will stop crashing and needs a different injection.
+    const crashVector = { id: 'ts-000099', lang: 'ts', event: 'PreToolUse', tool: 'Bash', input: { command: 'git commit -F githooks' }, expected: null, source: 'mined', note: 'forced crash: -F names an existing directory, not a file' };
+    fs.writeFileSync(path.join(c.dir, 'mined', 'crash.jsonl'), JSON.stringify(crashVector) + '\n');
+
+    const r = runSuite({ corpusDir: c.dir, configsDir: CONFIGS, quiet: true });
+    assert.equal(r.exitCode, 1);
+    assert.match(r.report, /crashed \(1\)/);
+    const by = Object.fromEntries(r.results.map((x) => [x.vector.id, x.status]));
+    assert.equal(by['ts-000099'], 'crashed');
+
+    runSuite({ corpusDir: c.dir, configsDir: CONFIGS, quiet: true, update: true });
+    const crashFile = readJsonl(path.join(c.dir, 'mined', 'crash.jsonl'));
+    assert.equal(crashFile.find((v) => v.id === 'ts-000099').expected, null);   // --update never labels a crashed vector
+  } finally { c.cleanup(); }
+});
+
+test('minor 3: makeLangProject with no config for a lang throws and leaves no temp dir', () => {
+  const tmpConfigs = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-harness-eval-configs-'));
+  try {
+    fs.copyFileSync(path.join(CONFIGS, 'ts.json'), path.join(tmpConfigs, 'ts.json'));
+    const before = fs.readdirSync(os.tmpdir()).filter((n) => n.startsWith('cc-harness-eval-go-'));
+    assert.throws(() => makeLangProject('go', tmpConfigs), /no config for lang "go"/);
+    const after = fs.readdirSync(os.tmpdir()).filter((n) => n.startsWith('cc-harness-eval-go-'));
+    assert.deepEqual(after, before);
+  } finally { fs.rmSync(tmpConfigs, { recursive: true, force: true }); }
+});
+
+test('minor 3: makeLangProject cleans up its temp dir when the config is invalid', () => {
+  const tmpConfigs = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-harness-eval-configs-'));
+  try {
+    fs.writeFileSync(path.join(tmpConfigs, 'ts.json'), JSON.stringify({ version: 2 }));   // unsupported version → invalid
+    const before = fs.readdirSync(os.tmpdir()).filter((n) => n.startsWith('cc-harness-eval-ts-'));
+    assert.throws(() => makeLangProject('ts', tmpConfigs), /config ts: invalid/);
+    const after = fs.readdirSync(os.tmpdir()).filter((n) => n.startsWith('cc-harness-eval-ts-'));
+    assert.deepEqual(after, before);
+  } finally { fs.rmSync(tmpConfigs, { recursive: true, force: true }); }
+});
+
+test('minor 4: formatReport shows the first three lines of a mismatch reason, indented', () => {
+  const c = copyFixture();
+  try {
+    const r = runSuite({ corpusDir: c.dir, configsDir: CONFIGS, quiet: true });
+    const idx = r.report.indexOf('ts-000005');
+    const chunk = r.report.slice(idx, idx + 500);
+    const reasonLines = chunk.split('\n').filter((l) => l.trim().startsWith('reason:'));
+    assert.equal(reasonLines.length, 3);
+    for (const l of reasonLines) assert.match(l, /^      reason: /);
+  } finally { c.cleanup(); }
+});
+
+test('minor 5: toJson results include the actual reason', () => {
+  const c = copyFixture();
+  try {
+    const r = runSuite({ corpusDir: c.dir, configsDir: CONFIGS, quiet: true });
+    const j = toJson(r.results, {});
+    const row = j.results.find((x) => x.id === 'ts-000005');
+    assert.ok(row.actual.reason && row.actual.reason.includes('commit guard rejected'));
+  } finally { c.cleanup(); }
+});
+
+test('minor 6: runSuite throws on a duplicate vector id across files', () => {
+  const c = copyFixture();
+  try {
+    const dup = { id: 'ts-000010', lang: 'ts', event: 'PreToolUse', tool: 'Bash', input: { command: 'git status' }, expected: { kind: 'pass' }, source: 'mined', note: 'dup of an adversarial id' };
+    fs.writeFileSync(path.join(c.dir, 'mined', 'dup.jsonl'), JSON.stringify(dup) + '\n');
+    assert.throws(() => runSuite({ corpusDir: c.dir, configsDir: CONFIGS, quiet: true }), /duplicate vector id ts-000010/);
   } finally { c.cleanup(); }
 });
