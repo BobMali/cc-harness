@@ -1,0 +1,37 @@
+{"id":"ts-594f09","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git reset --hard"},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"spec list"}
+{"id":"ts-f91392","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git reset --hard HEAD~1"},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"spec list arg"}
+{"id":"ts-ad7e9c","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git checkout ."},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"spec list"}
+{"id":"ts-970583","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git checkout -- src/a.ts"},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"checkout dashdash"}
+{"id":"ts-90b3b0","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git restore ."},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"spec list"}
+{"id":"ts-671600","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git clean -f"},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"spec list"}
+{"id":"ts-157c3c","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git clean -fdx"},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"spec list flags"}
+{"id":"ts-a677c5","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git push --force"},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"spec list"}
+{"id":"ts-11d7be","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git push -f origin main"},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"spec list short flag"}
+{"id":"ts-0f01d3","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git branch -D feature"},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"spec list"}
+{"id":"ts-8e4ce6","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git stash drop"},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"spec list"}
+{"id":"ts-eae4a0","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git stash clear"},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"spec list"}
+{"id":"ts-32dbec","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git -C . push -f"},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"git global"}
+{"id":"ts-a5ea4b","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"cd /tmp && git reset --hard"},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"second segment"}
+{"id":"ts-ea3087","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git -c core.pager=cat reset --hard"},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"git -c option"}
+{"id":"ts-f94708","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git status"},"source":"adversarial","expected":{"kind":"pass"},"note":"safe command"}
+{"id":"ts-521a96","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git reset HEAD~1"},"source":"adversarial","expected":{"kind":"pass"},"note":"safe reset"}
+{"id":"ts-7cda50","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git reset --soft HEAD~1"},"source":"adversarial","expected":{"kind":"pass"},"note":"safe reset soft"}
+{"id":"ts-8f1c2c","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git checkout -b feature"},"source":"adversarial","expected":{"kind":"pass"},"note":"safe checkout new branch"}
+{"id":"ts-0b914b","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git checkout main"},"source":"adversarial","expected":{"kind":"pass"},"note":"safe checkout branch"}
+{"id":"ts-f7e583","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git restore --staged src/a.ts"},"source":"adversarial","expected":{"kind":"pass"},"note":"safe restore staged"}
+{"id":"ts-7cd5dd","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git clean -n"},"source":"adversarial","expected":{"kind":"pass"},"note":"dry run"}
+{"id":"ts-4acba5","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git push"},"source":"adversarial","expected":{"kind":"pass"},"note":"safe push"}
+{"id":"ts-65c48c","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git push --force-with-lease"},"source":"adversarial","expected":{"kind":"pass"},"note":"safe force-with-lease"}
+{"id":"ts-2adb52","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git branch -d merged"},"source":"adversarial","expected":{"kind":"pass"},"note":"safe delete"}
+{"id":"ts-82c56f","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git stash"},"source":"adversarial","expected":{"kind":"pass"},"note":"safe stash"}
+{"id":"ts-e55ad5","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git stash pop"},"source":"adversarial","expected":{"kind":"pass"},"note":"safe stash pop"}
+{"id":"ts-53cca4","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git log --oneline"},"source":"adversarial","expected":{"kind":"pass"},"note":"safe log"}
+{"id":"ts-ec3425","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"echo \"git reset --hard\""},"source":"adversarial","expected":{"kind":"pass"},"note":"near miss"}
+{"id":"ts-50151a","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git commit -m \"docs: mention git reset --hard\""},"source":"adversarial","expected":{"kind":"pass"},"note":"near miss commit message"}
+{"id":"ts-f0254e","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git push origin +main"},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"refspec force"}
+{"id":"ts-222a78","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git branch --delete --force feature"},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"delete force long"}
+{"id":"ts-4cd2e3","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git branch -Df feature"},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"delete force short"}
+{"id":"ts-d537ee","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git switch -f main"},"source":"adversarial","expected":{"kind":"ask","guard":"git","known_gap":true},"note":"switch force"}
+{"id":"ts-f018a8","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"bash -c \"git reset --hard\""},"source":"adversarial","expected":{"kind":"ask","guard":"git","known_gap":true},"note":"shell wrapper"}
+{"id":"ts-537aad","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git checkout src/a.ts"},"source":"adversarial","expected":{"kind":"ask","guard":"git","known_gap":true},"note":"checkout file"}
+{"id":"ts-015ca0","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git restore src/a.ts"},"source":"adversarial","expected":{"kind":"ask","guard":"git","known_gap":true},"note":"restore file"}
