@@ -21,13 +21,28 @@ export const SENSITIVE_PATHS = [
 
 function escapeRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 
-export function redact(text, { cwd } = {}) {
+const EMAIL_ALLOWLIST = ['noreply@anthropic.com'];
+const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/;
+
+function hasEmail(t) {
+  // Strip the allowlisted address, then the "git@" SSH service user so SCP-style
+  // and ssh:// git remotes (git@github.com:x/y.git, ssh://git@host) still survive —
+  // they carry no personal identity, just the well-known "git" account name.
+  const scrubbed = EMAIL_ALLOWLIST.reduce((acc, e) => acc.split(e).join(''), t)
+    .replace(/(^|[^A-Za-z0-9._%+-])git@/g, '$1');
+  return EMAIL_RE.test(scrubbed);
+}
+
+export function redact(text, { cwd, words = [] } = {}) {
   let t = String(text);
   const c = cwd ? cwd.replace(/\/+$/, '') : '';
   if (c.length >= 2) t = t.replace(new RegExp(`${escapeRe(c)}(?=/|\\s|["']|$)`, 'g'), '.');
   t = t.replace(/\/Users\/[^/\s"':;]+/g, '~').replace(/\/home\/[^/\s"':;]+/g, '~');
-  if (SECRET_PATTERNS.some((re) => re.test(t))) return { text: t, dropped: 'secret' };
+  t = t.replace(/-(Users|home)-[^-/\s"']+-/g, '-$1-~-');
+  t = t.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '00000000-0000-4000-8000-000000000000');
+  if (SECRET_PATTERNS.some((re) => re.test(t)) || hasEmail(t)) return { text: t, dropped: 'secret' };
   if (SENSITIVE_PATHS.some((re) => re.test(t))) return { text: t, dropped: 'sensitive-path' };
+  if (words.some((w) => new RegExp('(?:^|[^A-Za-z])' + escapeRe(w) + '(?![A-Za-z])', 'i').test(t))) return { text: t, dropped: 'personal' };
   t = elideHeredocs(t);
   if (t.length > MAX_LEN) t = t.slice(0, MAX_LEN) + ' …[truncated]';
   return { text: t, dropped: null };
