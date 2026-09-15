@@ -3,9 +3,11 @@
 {"type":"assistant","cwd":"CWD","timestamp":"2026-08-29T10:00:02.000Z","message":{"role":"assistant","content":[{"type":"tool_use","name":"Write","input":{"file_path":"CWD/src/new.ts","content":"export const x = 1;"}}]}}
 {"type":"assistant","cwd":"CWD","timestamp":"2026-08-29T10:00:03.000Z","message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","input":{"file_path":"CWD/src/new.ts","old_string":"1","new_string":"2"}}]}}
 {"type":"assistant","cwd":"CWD","timestamp":"2026-08-29T10:00:04.000Z","message":{"role":"assistant","content":[{"type":"tool_use","name":"Write","input":{"file_path":"CWD/src/new.ts","content":"again"}}]}}
-{"type":"assistant","cwd":"CWD","timestamp":"2026-08-29T10:00:05.000Z","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"export GITHUB_TOKEN=abc && npm publish"}}]}}
-{"type":"assistant","cwd":"CWD","timestamp":"2026-08-29T10:00:06.000Z","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"cat CWD/.env"}}]}}
-{"type":"assistant","cwd":"CWD","timestamp":"2026-08-29T10:00:07.000Z","message":{"role":"assistant","content":[{"type":"tool_use","name":"Read","input":{"file_path":"CWD/README.md"}}]}}
-{"type":"assistant","cwd":"CWD","timestamp":"2026-08-29T10:00:08.000Z","isSidechain":true,"message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"npx   vitest run src/a.test.ts"}}]}}
+{"type":"assistant","cwd":"CWD","timestamp":"2026-08-29T10:00:05.000Z","message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/Users/carol/private/notes.ts","old_string":"a","new_string":"b"}}]}}
+{"type":"assistant","cwd":"CWD","timestamp":"2026-08-29T10:00:06.000Z","message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/Volumes/Other/drive/y.ts","old_string":"a","new_string":"b"}}]}}
+{"type":"assistant","cwd":"CWD","timestamp":"2026-08-29T10:00:07.000Z","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"export GITHUB_TOKEN=abc && npm publish"}}]}}
+{"type":"assistant","cwd":"CWD","timestamp":"2026-08-29T10:00:08.000Z","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"cat CWD/.env"}}]}}
+{"type":"assistant","cwd":"CWD","timestamp":"2026-08-29T10:00:09.000Z","message":{"role":"assistant","content":[{"type":"tool_use","name":"Read","input":{"file_path":"CWD/README.md"}}]}}
+{"type":"assistant","cwd":"CWD","timestamp":"2026-08-29T10:00:10.000Z","isSidechain":true,"message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"npx   vitest run src/a.test.ts"}}]}}
 not json at all
-{"type":"assistant","cwd":"CWD","timestamp":"2026-08-29T10:00:09.000Z","message":{"role":"assistant","content":[{"type":"text","text":"done"}]}}
+{"type":"assistant","cwd":"CWD","timestamp":"2026-08-29T10:00:11.000Z","message":{"role":"assistant","content":[{"type":"text","text":"done"}]}}

@@ -32,7 +32,9 @@ export function readJsonl(file) {
 
 export function writeJsonl(file, rows) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, rows.map((r) => JSON.stringify(r)).join('\n') + (rows.length ? '\n' : ''));
+  const tmp = `${file}.tmp`;
+  fs.writeFileSync(tmp, rows.map((r) => JSON.stringify(r)).join('\n') + (rows.length ? '\n' : ''));
+  fs.renameSync(tmp, file);
 }
 
 export function loadCorpus(dir) {

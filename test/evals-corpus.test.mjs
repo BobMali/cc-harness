@@ -69,3 +69,19 @@ test('validateVector rejects non-object input without throwing', () => {
   assert.deepEqual(validateVector(42), ['vector must be an object']);
   assert.deepEqual(validateVector('x'), ['vector must be an object']);
 });
+
+// --- Fix round 1 -------------------------------------------------------
+
+test('I5: writeJsonl writes atomically and leaves no .tmp sibling', () => {
+  const d = makeDataDir();
+  try {
+    const f = path.join(d.dir, 'a', 'b.jsonl');
+    writeJsonl(f, [{ x: 1 }, { y: 2 }]);
+    assert.deepEqual(readJsonl(f), [{ x: 1 }, { y: 2 }]);
+    assert.equal(fs.existsSync(`${f}.tmp`), false);
+    // a second write (overwrite) also leaves no leftover tmp file
+    writeJsonl(f, [{ z: 3 }]);
+    assert.deepEqual(readJsonl(f), [{ z: 3 }]);
+    assert.equal(fs.existsSync(`${f}.tmp`), false);
+  } finally { d.cleanup(); }
+});
