@@ -1,0 +1,8 @@
+{"id":"ts-ffb3ce","lang":"ts","event":"PostToolUse","tool":"Edit","input":{"file_path":"src/q.ts"},"fixture":{"exists":["src/q.ts"]},"source":"adversarial","expected":{"kind":"block","guard":"quality"},"note":"source file arms"}
+{"id":"ts-f135fc","lang":"ts","event":"PostToolUse","tool":"Edit","input":{"file_path":"src/q.test.ts"},"fixture":{"exists":["src/q.test.ts"]},"source":"adversarial","expected":{"kind":"block","guard":"quality"},"note":"test file arms"}
+{"id":"ts-2fa910","lang":"ts","event":"PostToolUse","tool":"MultiEdit","input":{"file_path":"src/a.tsx"},"fixture":{"exists":["src/a.tsx"]},"source":"adversarial","expected":{"kind":"block","guard":"quality"},"note":"MultiEdit source"}
+{"id":"ts-bc613b","lang":"ts","event":"PostToolUse","tool":"Write","input":{"file_path":"src/b.mjs"},"source":"adversarial","expected":{"kind":"block","guard":"quality"},"note":"Write source"}
+{"id":"ts-a321be","lang":"ts","event":"PostToolUse","tool":"Edit","input":{"file_path":"README.md"},"fixture":{"exists":["README.md"]},"source":"adversarial","expected":{"kind":"pass"},"note":"non-source"}
+{"id":"ts-633659","lang":"ts","event":"PostToolUse","tool":"Edit","input":{"file_path":"node_modules/x/a.ts"},"fixture":{"exists":["node_modules/x/a.ts"]},"source":"adversarial","expected":{"kind":"pass"},"note":"ignored path"}
+{"id":"ts-2926c2","lang":"ts","event":"PostToolUse","tool":"Edit","input":{"file_path":"dist/a.js"},"fixture":{"exists":["dist/a.js"]},"source":"adversarial","expected":{"kind":"pass"},"note":"ignored build dir"}
+{"id":"ts-37dc42","lang":"ts","event":"PostToolUse","tool":"Edit","input":{"file_path":"../outside.ts"},"source":"adversarial","expected":{"kind":"pass","known_gap":true},"note":"path outside project still arms (deferred T4)"}
