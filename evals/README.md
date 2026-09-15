@@ -4,6 +4,8 @@ An offline corpus of tool payloads evaluated through the production guard path. 
 
 ## Run
 
+The shipped corpus is adversarial-only and `ts`-only until `mine.mjs` has been run, so `--source mined` and `--lang go` (or `php`/`swift`) error with "no vectors selected" until then.
+
     node evals/run.mjs                      # everything; exit 0 clean, 1 mismatch, 2 unlabelled vectors
     node evals/run.mjs --lang ts,go         # filter by language
     node evals/run.mjs --source adversarial # or mined
