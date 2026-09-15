@@ -19,6 +19,13 @@ jobs:
         run: claude plugin validate plugins/cc-harness --strict
       - name: tests
         run: node --test test/*.test.mjs
+      - name: evals
+        run: node evals/run.mjs --json evals/results.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-results
+          path: evals/results.json
 
   commits:
     runs-on: ubuntu-latest

@@ -12,7 +12,8 @@
       "Bash(git branch:*)",
       "Bash(node --test:*)",
       "Bash(node --check:*)",
-      "Bash(claude plugin validate:*)"
+      "Bash(claude plugin validate:*)",
+      "Bash(node evals/run.mjs:*)"
     ],
     "ask": [
       "Bash(git push:*)",

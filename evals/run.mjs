@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadConfig } from '../plugins/cc-harness/lib/config.mjs';
 import { evaluateGuards } from '../plugins/cc-harness/lib/cli.mjs';
@@ -17,6 +18,7 @@ const MARKERS = { ts: 'package.json', go: 'go.mod', php: 'composer.json', swift:
 const REGEX_FILE = '^(feat|fix|docs|test|refactor|build|ci|chore)(\\([a-z0-9-]+\\))?!?: [a-z](.{0,64}[^.])?$\n# types: feat fix docs test refactor build ci chore\n';
 const STUB_EXEC = () => ({ status: 0, output: '' });
 const FAIL_EXEC = () => ({ status: 1, output: 'eval: forced failure' });   // PostToolUse: makes "armed" observable as block
+const BIN = path.join(pluginRoot(), 'bin', 'harness.mjs');
 
 export function makeLangProject(lang, configsDir = DEFAULT_CONFIGS) {
   const configFile = path.join(configsDir, `${lang}.json`);
@@ -77,6 +79,33 @@ export function compare(vector, actual) {
   return same ? 'match' : 'mismatch';
 }
 
+function envelopeKind(stdout) {
+  const s = stdout.trim();
+  if (!s) return 'pass';
+  const j = JSON.parse(s);
+  if (j.hookSpecificOutput?.permissionDecision) return j.hookSpecificOutput.permissionDecision;
+  if (j.decision === 'block') return 'block';
+  return 'pass';
+}
+
+export function sampleViaCli(results, projects, { sample, dataDir, rng = Math.random }) {
+  const pool = [...results].sort(() => rng() - 0.5).slice(0, sample);
+  const mismatches = [];
+  for (const r of pool) {
+    const v = r.vector; const project = projects.get(v.lang);
+    const created = [];
+    for (const rel of v.fixture?.exists ?? []) { const abs = path.resolve(project.dir, rel); if (inside(project.dir, abs) && writeEmpty(abs)) created.push(abs); }
+    try {
+      const toolInput = v.tool === 'Bash' ? { command: v.input.command } : { file_path: path.resolve(project.dir, v.input.file_path) };
+      const input = JSON.stringify({ hook_event_name: v.event, tool_name: v.tool, tool_input: toolInput, session_id: 'eval-cli', cwd: project.dir });
+      const p = spawnSync(process.execPath, [BIN, 'hook', v.event], { input, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: project.dir, CLAUDE_PLUGIN_DATA: dataDir, CC_HARNESS_EVAL_EXEC_FAIL: v.event === 'PostToolUse' ? '1' : '' } });
+      const viaCli = envelopeKind(p.stdout);
+      if (viaCli !== r.actual.kind) mismatches.push({ id: v.id, inProcess: r.actual.kind, viaCli });
+    } finally { for (const abs of created) fs.rmSync(abs, { force: true }); }
+  }
+  return { checked: pool.length, mismatches };
+}
+
 export function runSuite(opts = {}) {
   const t0 = Date.now();
   const corpusDir = path.resolve(opts.corpusDir ?? DEFAULT_CORPUS);
@@ -110,6 +139,7 @@ export function runSuite(opts = {}) {
   const projectFactory = opts.projectFactory ?? makeLangProject;
   const projects = new Map();
   const results = [];
+  let viaCli = null;
   try {
     for (const v of selected) {
       if (!projects.has(v.lang)) projects.set(v.lang, projectFactory(v.lang, configsDir));
@@ -117,6 +147,9 @@ export function runSuite(opts = {}) {
       if (opts.guard && actual.guard !== opts.guard && !(v.expected?.guard === opts.guard)) continue;
       results.push({ vector: v, actual, status: compare(v, actual) });
     }
+    // Projects stay alive (inside this try, before cleanup below) so the sampled CLI spawns
+    // can reuse the same temp project dirs the in-process decisions were computed against.
+    if (opts.viaCli && results.length > 0) viaCli = sampleViaCli(results, projects, { sample: opts.sample ?? 100, dataDir });
   } finally {
     for (const p of projects.values()) p.cleanup();
     fs.rmSync(dataDir, { recursive: true, force: true });
@@ -137,11 +170,11 @@ export function runSuite(opts = {}) {
     }
     for (const file of touched) writeJsonl(file, byFile.get(file).map(({ file: _f, ...v }) => v));
   }
-  const report = formatReport(results, { elapsedMs: Date.now() - t0, shadowed: shadowed.length });
+  const report = formatReport(results, { elapsedMs: Date.now() - t0, shadowed: shadowed.length, viaCli });
   if (!opts.quiet) process.stdout.write(report);
   const has = (s) => results.some((r) => r.status === s);
-  const exitCode = has('mismatch') || has('gap-closed') || has('crashed') ? 1 : has('unlabelled') ? 2 : 0;
-  if (opts.json) fs.writeFileSync(opts.json, JSON.stringify(toJson(results, { exitCode, elapsedMs: Date.now() - t0, shadowed: shadowed.length }), null, 2) + '\n');
+  const exitCode = has('mismatch') || has('gap-closed') || has('crashed') || (viaCli && viaCli.mismatches.length > 0) ? 1 : has('unlabelled') ? 2 : 0;
+  if (opts.json) fs.writeFileSync(opts.json, JSON.stringify(toJson(results, { exitCode, elapsedMs: Date.now() - t0, shadowed: shadowed.length, viaCli }), null, 2) + '\n');
   return { results, exitCode, report, shadowed: shadowed.length };
 }
 
@@ -152,6 +185,8 @@ const VALUE_FLAGS = new Map([
   ['--source', 'source'],
   ['--guard', 'guard'],
   ['--json', 'json'],
+  ['--via', 'via'],
+  ['--sample', 'sample'],
 ]);
 
 function parseArgs(argv) {
@@ -167,6 +202,16 @@ function parseArgs(argv) {
     else if (a === '--update') o.update = true;
     else if (a === '--quiet') o.quiet = true;
     else { process.stderr.write(`unknown option ${a}\n`); process.exit(1); }
+  }
+  if (o.via !== undefined) {
+    if (o.via !== 'cli') { process.stderr.write(`evals: --via only supports "cli"\n`); process.exit(1); }
+    o.viaCli = true;
+    delete o.via;
+  }
+  if (o.sample !== undefined) {
+    const n = Number(o.sample);
+    if (!Number.isInteger(n) || n < 1) { process.stderr.write(`evals: --sample must be an integer >= 1\n`); process.exit(1); }
+    o.sample = n;
   }
   return o;
 }

@@ -230,6 +230,15 @@ test('B2: a duplicate id where one copy is mined and the other adversarial is sh
   } finally { c.cleanup(); }
 });
 
+test('--via cli --sample compares the stdout envelope with the in-process decision', () => {
+  const c = copyFixture();
+  try {
+    const r = runSuite({ corpusDir: c.dir, configsDir: CONFIGS, quiet: true, viaCli: true, sample: 3, update: true });
+    assert.match(r.report, /via cli: 3 checked, 0 envelope mismatches/);
+    assert.equal(r.exitCode, 1);   // gap-closed fixture still fails; envelope is clean
+  } finally { c.cleanup(); }
+});
+
 test('B2: a duplicate id within the same source still throws', () => {
   const c = copyFixture();
   try {
