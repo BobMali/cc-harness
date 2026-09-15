@@ -1,0 +1,11 @@
+{"type":"user","cwd":"CWD","timestamp":"2026-08-29T10:00:00.000Z","message":{"role":"user","content":"hi"}}
+{"type":"assistant","cwd":"CWD","timestamp":"2026-08-29T10:00:01.000Z","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"npx vitest run src/a.test.ts","description":"run tests"}}]}}
+{"type":"assistant","cwd":"CWD","timestamp":"2026-08-29T10:00:02.000Z","message":{"role":"assistant","content":[{"type":"tool_use","name":"Write","input":{"file_path":"CWD/src/new.ts","content":"export const x = 1;"}}]}}
+{"type":"assistant","cwd":"CWD","timestamp":"2026-08-29T10:00:03.000Z","message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","input":{"file_path":"CWD/src/new.ts","old_string":"1","new_string":"2"}}]}}
+{"type":"assistant","cwd":"CWD","timestamp":"2026-08-29T10:00:04.000Z","message":{"role":"assistant","content":[{"type":"tool_use","name":"Write","input":{"file_path":"CWD/src/new.ts","content":"again"}}]}}
+{"type":"assistant","cwd":"CWD","timestamp":"2026-08-29T10:00:05.000Z","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"export GITHUB_TOKEN=abc && npm publish"}}]}}
+{"type":"assistant","cwd":"CWD","timestamp":"2026-08-29T10:00:06.000Z","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"cat CWD/.env"}}]}}
+{"type":"assistant","cwd":"CWD","timestamp":"2026-08-29T10:00:07.000Z","message":{"role":"assistant","content":[{"type":"tool_use","name":"Read","input":{"file_path":"CWD/README.md"}}]}}
+{"type":"assistant","cwd":"CWD","timestamp":"2026-08-29T10:00:08.000Z","isSidechain":true,"message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"npx   vitest run src/a.test.ts"}}]}}
+not json at all
+{"type":"assistant","cwd":"CWD","timestamp":"2026-08-29T10:00:09.000Z","message":{"role":"assistant","content":[{"type":"text","text":"done"}]}}
