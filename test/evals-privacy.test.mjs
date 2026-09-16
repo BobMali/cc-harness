@@ -19,6 +19,13 @@ const UUID_PLACEHOLDER = '00000000-0000-4000-8000-000000000000';
 const SESSION_PLACEHOLDER = 'session_00000000000000000000000000';
 const EMAIL_ALLOWLIST = 'noreply@anthropic.com';
 
+// Anchored to a real name character after the marker (not just "not ~"), so a payload that is
+// itself literal regex/grep text describing these patterns — e.g. an audit command's own
+// `/(Users|home)/[^"/ ]{0,40}` — does not false-positive: "(", "|", ")" never satisfy
+// [A-Za-z0-9_.-] / [A-Za-z0-9_.], so no real name character follows the marker there.
+const USERS_HOME_PATH_RE = /\/(Users|home)\/(?!~)[A-Za-z0-9_.-]/;
+const USERS_HOME_DIR_RE = /-(Users|home)-(?!~)[A-Za-z0-9_.]/;
+
 function collectRows(dir) {
   if (!fs.existsSync(dir)) return [];
   const rows = [];
@@ -26,18 +33,6 @@ function collectRows(dir) {
     for (const row of readJsonl(path.join(dir, f))) rows.push({ row, file: path.join(path.basename(dir), f) });
   }
   return rows;
-}
-
-// "-Users-" / "-home-" is Claude Code's project-directory encoding; redact() leaves the dashed
-// skeleton in place and swaps only the name for "~", so the char right after the marker must be
-// "~" (or nothing, if the marker sits at the very end of the string untouched).
-function leaksEncodedDir(s) {
-  const re = /-(?:Users|home)-(.)?/g;
-  let m;
-  while ((m = re.exec(s))) {
-    if (m[1] !== undefined && m[1] !== '~') return true;
-  }
-  return false;
 }
 
 test('privacy: every committed corpus row is shaped and redacted as expected', () => {
@@ -54,8 +49,8 @@ test('privacy: every committed corpus row is shaped and redacted as expected', (
     if (typeof payload === 'string') {
       const r = redact(payload, { cwd: undefined });
       if (r.dropped) bad.push(`${where}: redact(payload) drops as "${r.dropped}"`);
-      if (/\/(?:Users|home)\/(?!~)/.test(payload)) bad.push(`${where}: leaked /Users or /home path: ${payload}`);
-      if (leaksEncodedDir(payload)) bad.push(`${where}: leaked -Users- or -home- project-dir encoding: ${payload}`);
+      if (USERS_HOME_PATH_RE.test(payload)) bad.push(`${where}: leaked /Users or /home path: ${payload}`);
+      if (USERS_HOME_DIR_RE.test(payload)) bad.push(`${where}: leaked -Users- or -home- project-dir encoding: ${payload}`);
       const emails = payload.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g) || [];
       for (const e of emails) if (e !== EMAIL_ALLOWLIST) bad.push(`${where}: leaked email "${e}"`);
       const uuids = payload.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi) || [];
@@ -67,4 +62,15 @@ test('privacy: every committed corpus row is shaped and redacted as expected', (
     if (expectedId !== row.id) bad.push(`${file}: id "${row.id}" does not re-derive (expected "${expectedId}")`);
   }
   assert.deepEqual(bad, []);
+});
+
+// --- Round 3 -----------------------------------------------------------
+
+test('round 3: the leak regexes require a real name character, not just "not ~" — an audit grep pattern is not a leak', () => {
+  const grepPathPattern = "grep -o -E '/(Users|home)/[^\"/ ]{0,40}'";
+  const grepDirPattern = "grep -o -E '\\-(Users|home)\\-[^\"/ ]{0,40}'";
+  assert.ok(!USERS_HOME_PATH_RE.test(grepPathPattern), grepPathPattern);
+  assert.ok(!USERS_HOME_DIR_RE.test(grepDirPattern), grepDirPattern);
+  assert.ok(USERS_HOME_PATH_RE.test('/Users/alice/x'));
+  assert.ok(USERS_HOME_DIR_RE.test('-Users-alice-x'));
 });
