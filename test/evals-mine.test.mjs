@@ -297,12 +297,86 @@ test('item 2: --rebuild collapses two rows that redact to the same id, keeping t
     const rowB = { id: 'ts-dddddd', lang: 'ts', event: 'PreToolUse', tool: 'Bash', input: { command: 'echo session_02ZzYyXxWwVvUuTtSsRrQqPpOo one' }, expected: { kind: 'ask' }, source: 'mined', note: 'second' };
     fs.writeFileSync(path.join(out.dir, 'ts.jsonl'), [rowA, rowB].map((r) => JSON.stringify(r)).join('\n') + '\n');
 
-    mine({ from: from.dir, out: out.dir, rebuild: true, log: () => {} });
+    const log = [];
+    mine({ from: from.dir, out: out.dir, rebuild: true, log: (s) => log.push(s) });
 
     const rows = readJsonl(path.join(out.dir, 'ts.jsonl'));
     assert.equal(rows.length, 1);
     assert.equal(rows[0].note, 'first');   // first row wins the collapse
+    // item 3: the discarded (collapsed) row counts under "removed", not "changed" — rowA's own
+    // redaction is the only real rewrite; rowB's collapse is a removal, not a second change.
+    assert.ok(log.some((s) => /rebuilt: 1 changed, 1 removed/.test(s)), log.join('\n'));
   } finally { from.cleanup(); out.cleanup(); }
+});
+
+test('item 1: --rebuild re-redacts fixture.exists entries, not just the payload', () => {
+  const from = makeDataDir(); const out = makeDataDir();
+  try {
+    const dir = path.join(from.dir, '-i-app'); fs.mkdirSync(dir);
+    fs.writeFileSync(path.join(dir, 's1.jsonl'), '');   // no fresh vectors this run
+
+    const input = { file_path: 'src/x.ts' };
+    const id = vectorId('ts', 'PreToolUse', 'Edit', input, true);
+    const row = { id, lang: 'ts', event: 'PreToolUse', tool: 'Edit', input, fixture: { exists: ['-Users-bob/x.ts'] }, expected: { kind: 'pass' }, source: 'mined', note: 'app 2026-08' };
+    fs.writeFileSync(path.join(out.dir, 'ts.jsonl'), JSON.stringify(row) + '\n');
+
+    const log = [];
+    mine({ from: from.dir, out: out.dir, rebuild: true, log: (s) => log.push(s) });
+
+    const rows = readJsonl(path.join(out.dir, 'ts.jsonl'));
+    assert.equal(rows.length, 1);
+    assert.deepEqual(rows[0].fixture, { exists: ['-Users-~/x.ts'] });
+    assert.deepEqual(rows[0].expected, { kind: 'pass' });
+    assert.equal(rows[0].id, id);   // the id hashes only the fixture flag, not its content
+    assert.ok(log.some((s) => /rebuilt: 1 changed, 0 removed/.test(s)), log.join('\n'));   // proves the row was rewritten, not skipped
+  } finally { from.cleanup(); out.cleanup(); }
+});
+
+test('item 1: --rebuild drops the whole row when a fixture.exists entry redacts as a secret', () => {
+  const from = makeDataDir(); const out = makeDataDir();
+  try {
+    const dir = path.join(from.dir, '-j-app'); fs.mkdirSync(dir);
+    fs.writeFileSync(path.join(dir, 's1.jsonl'), '');
+
+    const input = { file_path: 'src/y.ts' };
+    const id = vectorId('ts', 'PreToolUse', 'Edit', input, true);
+    const row = { id, lang: 'ts', event: 'PreToolUse', tool: 'Edit', input, fixture: { exists: ['.ssh/id_rsa'] }, expected: { kind: 'pass' }, source: 'mined', note: 'app 2026-08' };
+    fs.writeFileSync(path.join(out.dir, 'ts.jsonl'), JSON.stringify(row) + '\n');
+
+    const log = [];
+    mine({ from: from.dir, out: out.dir, rebuild: true, log: (s) => log.push(s) });
+
+    assert.equal(fs.existsSync(path.join(out.dir, 'ts.jsonl')), true);
+    assert.equal(readJsonl(path.join(out.dir, 'ts.jsonl')).length, 0);
+    assert.ok(log.some((s) => /rebuilt: 0 changed, 1 removed/.test(s)), log.join('\n'));
+  } finally { from.cleanup(); out.cleanup(); }
+});
+
+test('item 4: --rebuild without --from is corpus-only — no transcript walk, no default-home fallback', () => {
+  // Pin HOME to an empty dir: with the fix, --rebuild never consults it; if the skip ever
+  // regresses this fails closed (a "transcripts directory not found" error) instead of
+  // silently walking the real ~/.claude/projects.
+  const safeHome = makeDataDir();
+  const corpus = makeDataDir();
+  try {
+    fs.mkdirSync(path.join(corpus.dir, 'mined'), { recursive: true });
+    const input = { command: 'echo session_01AbCdEfGhIjKlMnOpQrStUv one' };
+    const id = vectorId('ts', 'PreToolUse', 'Bash', input);
+    const row = { id, lang: 'ts', event: 'PreToolUse', tool: 'Bash', input, expected: { kind: 'pass' }, source: 'mined', note: 'x' };
+    fs.writeFileSync(path.join(corpus.dir, 'mined', 'ts.jsonl'), JSON.stringify(row) + '\n');
+
+    const env = { ...process.env, HOME: safeHome.dir };
+    const p = spawnSync(process.execPath, [path.join(ROOT, 'evals', 'mine.mjs'), '--rebuild', '--out', path.join(corpus.dir, 'mined')], { encoding: 'utf8', env });
+
+    assert.equal(p.status, 0, p.stderr);
+    assert.ok(!/transcripts directory not found/.test(p.stderr), p.stderr);
+    assert.match(p.stdout, /rebuilt: 1 changed, 0 removed/);
+    assert.match(p.stdout, /mined 0 new vector\(s\)/);
+
+    const rows = readJsonl(path.join(corpus.dir, 'mined', 'ts.jsonl'));
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].input.command, 'echo session_00000000000000000000000000 one');
+  } finally { safeHome.cleanup(); corpus.cleanup(); }
 });
 
 test('item 8: note falls back to "project" when the project directory name itself matches a personal word', () => {

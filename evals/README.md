@@ -58,7 +58,7 @@ Review the miner's "longest vectors" list before committing.
 
 When a redaction rule gets stricter, the existing corpus was mined under the old rule and needs to be swept again:
 
-    node evals/mine.mjs --rebuild          # re-processes every existing row through the current redactor
+    node evals/mine.mjs --rebuild          # corpus-only: re-processes every existing row (payload and fixtures) through the current redactor, without walking transcripts
     node evals/run.mjs --update            # re-label any row whose id or decision changed
     # commit the corpus change
 

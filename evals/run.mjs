@@ -24,7 +24,6 @@ export function makeLangProject(lang, configsDir = DEFAULT_CONFIGS) {
   const configFile = path.join(configsDir, `${lang}.json`);
   if (!fs.existsSync(configFile)) throw new Error(`no config for lang "${lang}" in ${configsDir}`);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), `cc-harness-eval-${lang}-`));
-  let cliDir;
   try {
     fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
     fs.copyFileSync(configFile, path.join(dir, '.claude', 'harness.json'));
@@ -38,31 +37,46 @@ export function makeLangProject(lang, configsDir = DEFAULT_CONFIGS) {
 
     // A sibling project for --via cli sampling: the real check runner (no stub, no env-var
     // backdoor) needs a check that actually fails so a sampled PostToolUse spawn observes the
-    // same "armed" decision the in-process FAIL_EXEC stub produces.
-    cliDir = fs.mkdtempSync(path.join(os.tmpdir(), `cc-harness-eval-${lang}-cli-`));
-    fs.mkdirSync(path.join(cliDir, '.claude'), { recursive: true });
-    const cliConfig = {
-      version: 1,
-      preset: 'custom',
-      project: loaded.config.project,
-      commands: loaded.config.commands,
-      checks: [{ name: 'eval-fail', cmd: 'exit 1', fast: true }],
-      guards: { commit: loaded.config.guards.commit, stop: { checks: ['eval-fail'] } },
+    // same "armed" decision the in-process FAIL_EXEC stub produces. Building it costs a second
+    // mkdtemp + config load per language, so it is built lazily on first access to `.cliDir`
+    // (i.e. only when a run actually samples via --via cli) rather than for every project.
+    let cliDirBuilt = null;
+    const buildCliDir = () => {
+      const cd = fs.mkdtempSync(path.join(os.tmpdir(), `cc-harness-eval-${lang}-cli-`));
+      try {
+        fs.mkdirSync(path.join(cd, '.claude'), { recursive: true });
+        const cliConfig = {
+          version: 1,
+          preset: 'custom',
+          project: loaded.config.project,
+          commands: loaded.config.commands,
+          checks: [{ name: 'eval-fail', cmd: 'exit 1', fast: true }],
+          guards: { commit: loaded.config.guards.commit, stop: { checks: ['eval-fail'] } },
+        };
+        fs.writeFileSync(path.join(cd, '.claude', 'harness.json'), JSON.stringify(cliConfig, null, 2));
+        const cliLoaded = loadConfig(cd);
+        if (cliLoaded.status !== 'ok') throw new Error(`cli config ${lang}: ${cliLoaded.status} ${JSON.stringify(cliLoaded.errors ?? [])}`);
+        if (marker) writeEmpty(path.join(cd, marker));
+        fs.mkdirSync(path.join(cd, 'githooks'), { recursive: true });
+        fs.writeFileSync(path.join(cd, 'githooks', 'conventional-regex.txt'), REGEX_FILE);
+        return cd;
+      } catch (e) {
+        fs.rmSync(cd, { recursive: true, force: true });
+        throw e;
+      }
     };
-    fs.writeFileSync(path.join(cliDir, '.claude', 'harness.json'), JSON.stringify(cliConfig, null, 2));
-    const cliLoaded = loadConfig(cliDir);
-    if (cliLoaded.status !== 'ok') throw new Error(`cli config ${lang}: ${cliLoaded.status} ${JSON.stringify(cliLoaded.errors ?? [])}`);
-    if (marker) writeEmpty(path.join(cliDir, marker));
-    fs.mkdirSync(path.join(cliDir, 'githooks'), { recursive: true });
-    fs.writeFileSync(path.join(cliDir, 'githooks', 'conventional-regex.txt'), REGEX_FILE);
 
-    return {
-      dir, cliDir, lang, config: loaded.config,
-      cleanup: () => { fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(cliDir, { recursive: true, force: true }); },
+    const project = {
+      dir, lang, config: loaded.config,
+      cleanup: () => { fs.rmSync(dir, { recursive: true, force: true }); if (cliDirBuilt) fs.rmSync(cliDirBuilt, { recursive: true, force: true }); },
     };
+    Object.defineProperty(project, 'cliDir', {
+      enumerable: true,
+      get() { if (!cliDirBuilt) cliDirBuilt = buildCliDir(); return cliDirBuilt; },
+    });
+    return project;
   } catch (e) {
     fs.rmSync(dir, { recursive: true, force: true });
-    if (cliDir) fs.rmSync(cliDir, { recursive: true, force: true });
     throw e;
   }
 }
