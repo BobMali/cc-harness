@@ -20,7 +20,7 @@ jobs:
       - name: tests
         run: node --test test/*.test.mjs
       - name: evals
-        run: node evals/run.mjs --json evals/results.json
+        run: node evals/run.mjs --via cli --sample 100 --json evals/results.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:

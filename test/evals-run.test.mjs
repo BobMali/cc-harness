@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { runSuite, evaluateVector, makeLangProject, compare, sampleViaCli } from '../evals/run.mjs';
+import { runSuite, evaluateVector, makeLangProject, compare, sampleViaCli, fisherYates } from '../evals/run.mjs';
 import { readJsonl } from '../evals/lib/corpus.mjs';
 import { toJson } from '../evals/lib/report.mjs';
 import { makeDataDir } from './helpers/project.mjs';
@@ -279,4 +279,90 @@ test('F1 minor: sampleViaCli excludes crashed results from the sample pool', () 
     assert.equal(r.checked, 1);
     assert.ok(!r.mismatches.some((m) => m.id === 'ts-crash1'));
   } finally { proj.cleanup(); data.cleanup(); }
+});
+
+// --- Final wave ----------------------------------------------------------
+
+test('item 3: makeLangProject builds a sibling cliDir with a real "exit 1" check wired into the stop guard', () => {
+  const proj = makeLangProject('ts', CONFIGS);
+  try {
+    assert.ok(proj.cliDir);
+    assert.notEqual(proj.cliDir, proj.dir);
+    assert.ok(fs.existsSync(path.join(proj.cliDir, 'package.json')));   // marker mirrored
+    const cliConfig = JSON.parse(fs.readFileSync(path.join(proj.cliDir, '.claude', 'harness.json'), 'utf8'));
+    assert.equal(cliConfig.preset, 'custom');
+    assert.deepEqual(cliConfig.checks, [{ name: 'eval-fail', cmd: 'exit 1', fast: true }]);
+    assert.deepEqual(cliConfig.guards.stop.checks, ['eval-fail']);
+    assert.deepEqual(cliConfig.project, proj.config.project);
+    assert.deepEqual(cliConfig.commands, proj.config.commands);
+    assert.deepEqual(cliConfig.guards.commit, proj.config.guards.commit);
+  } finally { proj.cleanup(); }
+});
+
+test('item 3: sampleViaCli spawns the CLI against cliDir\'s real check runner — no env-var backdoor, PostToolUse blocks for real', () => {
+  const proj = makeLangProject('ts', CONFIGS); const data = makeDataDir();
+  try {
+    const vector = { id: 'ts-000004', lang: 'ts', event: 'PostToolUse', tool: 'Edit', input: { file_path: 'src/a.ts' }, expected: { kind: 'block', guard: 'quality' }, source: 'mined', note: 'x' };
+    // Lie about the in-process decision so any real CLI decision surfaces as a mismatch we can inspect.
+    const lyingActual = { kind: 'pass', guard: null, reason: null };
+    const r = sampleViaCli([{ vector, actual: lyingActual, status: 'mismatch' }], new Map([['ts', proj]]), { sample: 1, dataDir: data.dir });
+    assert.equal(r.checked, 1);
+    assert.equal(r.mismatches.length, 1);
+    assert.equal(r.mismatches[0].viaCli, 'block');   // the real "exit 1" check armed the quality gate, no backdoor involved
+  } finally { proj.cleanup(); data.cleanup(); }
+});
+
+test('item 4: fisherYates picks from the tail of a 200-item pool across 5 seeded LCG runs', () => {
+  function lcg(seed) {
+    let s = seed >>> 0;
+    return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+  }
+  const items = Array.from({ length: 200 }, (_, i) => ({ id: i, adversarial: i >= 180 }));
+  for (const seed of [1, 2, 3, 4, 5]) {
+    const rng = lcg(seed);
+    const sample = fisherYates(items, rng).slice(0, 50);
+    assert.equal(sample.length, 50);
+    assert.ok(sample.some((x) => x.adversarial), `seed ${seed} picked no adversarial item`);
+  }
+  // the source array is never mutated
+  const original = [1, 2, 3, 4, 5];
+  const copy = [...original];
+  fisherYates(original, lcg(42));
+  assert.deepEqual(original, copy);
+});
+
+test('item 5: a ~/ file_path resolves outside the project, not into a literal "~" directory inside it', () => {
+  const proj = makeLangProject('ts', CONFIGS); const data = makeDataDir();
+  try {
+    const v = { lang: 'ts', event: 'PreToolUse', tool: 'Edit', input: { file_path: '~/.claude/CLAUDE.md' } };
+    const a = evaluateVector(v, proj, data.dir);
+    assert.equal(a.kind, 'pass');
+    assert.ok(!fs.existsSync(path.join(proj.dir, '~')));
+  } finally { proj.cleanup(); data.cleanup(); }
+});
+
+test('item 5: a ~/ fixture.exists entry is also never created as a literal "~" directory inside the project', () => {
+  const proj = makeLangProject('ts', CONFIGS); const data = makeDataDir();
+  try {
+    const v = { lang: 'ts', event: 'PreToolUse', tool: 'Edit', input: { file_path: '~/.claude/CLAUDE.md' }, fixture: { exists: ['~/.claude/CLAUDE.md'] } };
+    const a = evaluateVector(v, proj, data.dir);
+    assert.equal(a.kind, 'pass');
+    assert.ok(!fs.existsSync(path.join(proj.dir, '~')));
+  } finally { proj.cleanup(); data.cleanup(); }
+});
+
+test('item 6: envelopeKind treats malformed CLI stdout as an envelope mismatch, not a thrown exception', () => {
+  const c = copyFixture();
+  const scriptDir = makeDataDir();
+  const script = path.join(scriptDir.dir, 'garbage.cjs');
+  fs.writeFileSync(script, 'process.stdout.write("nope"); process.exit(0);\n');
+  try {
+    const r = runSuite({
+      corpusDir: c.dir, configsDir: CONFIGS, quiet: true, update: true,
+      viaCli: true, sample: 3, cliEnv: { NODE_OPTIONS: `--require ${script}` },
+    });
+    assert.equal(r.viaCli.mismatches.length, 3);
+    for (const m of r.viaCli.mismatches) assert.equal(m.viaCli, 'malformed');
+    assert.equal(r.exitCode, 1);
+  } finally { c.cleanup(); scriptDir.cleanup(); }
 });

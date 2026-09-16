@@ -45,15 +45,3 @@ test('defaultExec: a hung/aborted command surfaces the error up front', () => {
   assert.notEqual(r.status, 0);
   assert.ok(r.output.startsWith('check aborted: ETIMEDOUT'), r.output);
 });
-
-test('defaultExec: CC_HARNESS_EVAL_EXEC_FAIL forces a failure for the eval suite\'s CLI envelope sampling', () => {
-  const prev = process.env.CC_HARNESS_EVAL_EXEC_FAIL;
-  process.env.CC_HARNESS_EVAL_EXEC_FAIL = '1';
-  try {
-    const r = defaultExec('true', { cwd: '/tmp' });
-    assert.deepEqual(r, { status: 1, output: 'eval: forced failure' });
-  } finally {
-    if (prev === undefined) delete process.env.CC_HARNESS_EVAL_EXEC_FAIL;
-    else process.env.CC_HARNESS_EVAL_EXEC_FAIL = prev;
-  }
-});

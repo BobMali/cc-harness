@@ -25,3 +25,4 @@ Open items found during review that were deliberately not fixed in the branch th
 - **Windows-style paths inside Bash commands are not scrubbed.** Transcripts here are macOS.
 - **"Missing `file_path`" on an edit tool is unrepresentable as a vector** (`validateVector` requires a string); the guard's `!fp` branch is covered by unit tests only.
 - **The dogfood `syntax` check and the CI `syntax` step do not `node --check` files under `evals/`; the `evals` check exercises the runner end to end instead.**
+- **The miner emits PreToolUse vectors only; pairing each Edit/Write with a PostToolUse vector would exercise the quality gate on mined data (about 365 vectors).**

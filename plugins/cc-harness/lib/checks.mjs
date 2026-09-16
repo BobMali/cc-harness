@@ -8,9 +8,6 @@ export function selectChecks(config, { scope = 'fast' } = {}) {
 }
 
 export function defaultExec(cmd, { cwd, timeoutMs = 540_000 } = {}) {
-  // Escape hatch for the eval suite's CLI envelope sampling only: forces a check failure so a
-  // sampled PostToolUse spawn observes the same "armed" decision the in-process stub produces.
-  if (process.env.CC_HARNESS_EVAL_EXEC_FAIL === '1') return { status: 1, output: 'eval: forced failure' };
   const r = spawnSync('/bin/sh', ['-c', cmd], {
     cwd, encoding: 'utf8', timeout: timeoutMs,
     env: { ...process.env, CI: process.env.CI ?? '1', FORCE_COLOR: '0', NO_COLOR: '1' },

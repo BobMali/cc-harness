@@ -62,6 +62,16 @@ function projectName(cwd) {
   return path.basename(cwd) || 'unknown';
 }
 
+function escapeRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+// A project directory named after (or containing) a personal word would otherwise leak that
+// word into the committed note unredacted; fall back to the generic label instead.
+function noteProjectName(cwd, words) {
+  const name = projectName(cwd);
+  if (words.some((w) => new RegExp('(?:^|[^A-Za-z])' + escapeRe(w) + '(?![A-Za-z])', 'i').test(name))) return 'project';
+  return name;
+}
+
 // Relativize file_path against cwd when it lands inside cwd; otherwise keep it
 // absolute (redact() then scrubs any /Users/<name> or /home/<name> prefix).
 // Never falls back to process.cwd() — an absolute p is resolved in place.
@@ -120,7 +130,7 @@ export function mineFile(file, { fsm = fs, words = [] } = {}) {
     const lang = langCache.get(cwd);
     const monthCandidate = String(rec.timestamp ?? '').slice(0, 7);
     const month = /^\d{4}-\d{2}$/.test(monthCandidate) ? monthCandidate : 'unknown';
-    const project = projectName(cwd);
+    const project = noteProjectName(cwd, words);
     for (const use of uses) {
       const v = toVector(use, { cwd, lang, touched, month, project, words });
       if (v.dropped) dropped[v.dropped] += 1; else vectors.push(v);
@@ -138,11 +148,53 @@ function walk(dir, fsm) {
   return out.sort();
 }
 
-export function mine({ from = DEFAULT_FROM, out = DEFAULT_OUT, wordsFile = DEFAULT_WORDS_FILE, fsm = fs, log = (s) => process.stdout.write(s + '\n') } = {}) {
+// --rebuild: re-run every existing corpus row through the current redactor (cwd unknown at
+// rebuild time, so only structural rules and the word list apply). A dropped row is removed; a
+// row whose payload or id changes is rewritten in place; rows that collapse onto the same id
+// keep only the first. Returns per-file counts merged into the caller's dropped.rebuilt total.
+function rebuildFile(file, lang, words) {
+  const rows = readJsonl(file);
+  const seen = new Set();
+  const kept = [];
+  let changed = 0;
+  let removed = 0;
+  for (const row of rows) {
+    const isBash = row.tool === 'Bash';
+    const text = isBash ? row.input.command : row.input.file_path;
+    const r = redact(text, { cwd: undefined, words });
+    if (r.dropped) { removed += 1; continue; }
+    const input = isBash ? { command: r.text } : { file_path: r.text };
+    const id = vectorId(lang, row.event, row.tool, input, Boolean(row.fixture));
+    if (id !== row.id || r.text !== text) changed += 1;
+    if (seen.has(id)) continue;   // two rows collapsed onto one id: keep the first
+    seen.add(id);
+    const newRow = { id, lang: row.lang, event: row.event, tool: row.tool, input };
+    if (row.fixture) newRow.fixture = row.fixture;
+    newRow.expected = row.expected;
+    newRow.source = row.source;
+    newRow.note = row.note;
+    kept.push(newRow);
+  }
+  writeJsonl(file, kept);
+  return { changed, removed };
+}
+
+export function mine({ from = DEFAULT_FROM, out = DEFAULT_OUT, wordsFile = DEFAULT_WORDS_FILE, rebuild = false, fsm = fs, log = (s) => process.stdout.write(s + '\n') } = {}) {
   if (!fsm.existsSync(from)) throw new Error(`transcripts directory not found: ${from}`);
   const words = loadWords(wordsFile, fsm);
+  let rebuiltRemoved = 0;
+  if (rebuild && fsm.existsSync(out)) {
+    let rebuiltChanged = 0;
+    for (const f of fsm.readdirSync(out).filter((x) => x.endsWith('.jsonl')).sort()) {
+      const lang = f.slice(0, -'.jsonl'.length);
+      const r = rebuildFile(path.join(out, f), lang, words);
+      rebuiltChanged += r.changed;
+      rebuiltRemoved += r.removed;
+    }
+    log(`rebuilt: ${rebuiltChanged} changed, ${rebuiltRemoved} removed`);
+  }
   const byLangNew = new Map();
-  const dropped = { secret: 0, 'sensitive-path': 0, 'escaping-path': 0, personal: 0, shadowed: 0 };
+  const dropped = { secret: 0, 'sensitive-path': 0, 'escaping-path': 0, personal: 0, shadowed: 0, rebuilt: rebuiltRemoved };
   const seen = new Set();
   // A new vector whose id already exists in the sibling adversarial corpus is shadowed:
   // the adversarial corpus already labels that exact (lang, event, tool, input, fixture)
@@ -190,6 +242,7 @@ function parseArgs(argv) {
   const FLAGS = new Map([['--from', 'from'], ['--out', 'out']]);
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
+    if (a === '--rebuild') { o.rebuild = true; continue; }
     if (!FLAGS.has(a)) { process.stderr.write(`unknown option ${a}\n`); process.exit(1); }
     const v = argv[i + 1];
     if (v === undefined || v.startsWith('--')) { process.stderr.write(`${a} requires a value\n`); process.exit(1); }
