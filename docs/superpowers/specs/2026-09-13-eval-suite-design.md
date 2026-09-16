@@ -101,8 +101,8 @@ Per vector:
 
 The guard loop is exported from `lib/cli.mjs` as `evaluateGuards(event, ctx)`
 so the runner and `runHook` share one code path; the only production change
-is the exported guard loop; the runner never sets environment variables for
-the plugin.
+is the exported guard loop; the runner sets only `CLAUDE_PROJECT_DIR` and
+`CLAUDE_PLUGIN_DATA` for the spawned CLI, never an eval-specific variable.
 
 `--via cli --sample N` additionally spawns `bin/harness.mjs hook <event>` for a
 random sample of N vectors with `CLAUDE_PROJECT_DIR` set to the temp project

@@ -35,32 +35,45 @@ function collectRows(dir) {
   return rows;
 }
 
+// Sweeps one string (the payload, or one fixture.exists entry) for every leak class the redactor
+// is supposed to have already scrubbed. `label` identifies which string within the row failed.
+function checkString(str, where, label, bad) {
+  const r = redact(str, { cwd: undefined });
+  if (r.dropped) bad.push(`${where}: redact(${label}) drops as "${r.dropped}"`);
+  if (USERS_HOME_PATH_RE.test(str)) bad.push(`${where}: leaked /Users or /home path in ${label}: ${str}`);
+  if (USERS_HOME_DIR_RE.test(str)) bad.push(`${where}: leaked -Users- or -home- project-dir encoding in ${label}: ${str}`);
+  const emails = str.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g) || [];
+  for (const e of emails) if (e !== EMAIL_ALLOWLIST) bad.push(`${where}: leaked email "${e}" in ${label}`);
+  const uuids = str.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi) || [];
+  for (const u of uuids) if (u.toLowerCase() !== UUID_PLACEHOLDER) bad.push(`${where}: leaked UUID "${u}" in ${label}`);
+  const sessions = str.match(/\bsession_[A-Za-z0-9]{20,}\b/g) || [];
+  for (const s of sessions) if (s !== SESSION_PLACEHOLDER) bad.push(`${where}: leaked session id "${s}" in ${label}`);
+}
+
+// Runs the full per-row sweep (shape, payload, fixtures, id re-derivation) used by the corpus
+// test below, factored out so the negative test can exercise it against an in-memory row too.
+function checkRow(row, file, bad) {
+  const where = `${file} ${row.id}`;
+  for (const k of Object.keys(row)) if (!TOP_KEYS.has(k)) bad.push(`${where}: unexpected top-level key "${k}"`);
+  if (row.input && typeof row.input === 'object') {
+    for (const k of Object.keys(row.input)) if (!INPUT_KEYS.has(k)) bad.push(`${where}: unexpected input key "${k}"`);
+  }
+  const payload = row.tool === 'Bash' ? row.input?.command : row.input?.file_path;
+  if (typeof payload === 'string') checkString(payload, where, 'payload', bad);
+  if (row.fixture && Array.isArray(row.fixture.exists)) {
+    row.fixture.exists.forEach((entry, i) => {
+      if (typeof entry === 'string') checkString(entry, where, `fixture.exists[${i}]`, bad);
+    });
+  }
+  const expectedId = vectorId(row.lang, row.event, row.tool, row.input, Boolean(row.fixture));
+  if (expectedId !== row.id) bad.push(`${where}: id "${row.id}" does not re-derive (expected "${expectedId}")`);
+}
+
 test('privacy: every committed corpus row is shaped and redacted as expected', () => {
   const rows = [...collectRows(path.join(CORPUS, 'mined')), ...collectRows(path.join(CORPUS, 'adversarial'))];
   assert.ok(rows.length > 0, 'expected at least one corpus row to check');
   const bad = [];
-  for (const { row, file } of rows) {
-    const where = `${file} ${row.id}`;
-    for (const k of Object.keys(row)) if (!TOP_KEYS.has(k)) bad.push(`${where}: unexpected top-level key "${k}"`);
-    if (row.input && typeof row.input === 'object') {
-      for (const k of Object.keys(row.input)) if (!INPUT_KEYS.has(k)) bad.push(`${where}: unexpected input key "${k}"`);
-    }
-    const payload = row.tool === 'Bash' ? row.input?.command : row.input?.file_path;
-    if (typeof payload === 'string') {
-      const r = redact(payload, { cwd: undefined });
-      if (r.dropped) bad.push(`${where}: redact(payload) drops as "${r.dropped}"`);
-      if (USERS_HOME_PATH_RE.test(payload)) bad.push(`${where}: leaked /Users or /home path: ${payload}`);
-      if (USERS_HOME_DIR_RE.test(payload)) bad.push(`${where}: leaked -Users- or -home- project-dir encoding: ${payload}`);
-      const emails = payload.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g) || [];
-      for (const e of emails) if (e !== EMAIL_ALLOWLIST) bad.push(`${where}: leaked email "${e}"`);
-      const uuids = payload.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi) || [];
-      for (const u of uuids) if (u.toLowerCase() !== UUID_PLACEHOLDER) bad.push(`${where}: leaked UUID "${u}"`);
-      const sessions = payload.match(/\bsession_[A-Za-z0-9]{20,}\b/g) || [];
-      for (const s of sessions) if (s !== SESSION_PLACEHOLDER) bad.push(`${where}: leaked session id "${s}"`);
-    }
-    const expectedId = vectorId(row.lang, row.event, row.tool, row.input, Boolean(row.fixture));
-    if (expectedId !== row.id) bad.push(`${file}: id "${row.id}" does not re-derive (expected "${expectedId}")`);
-  }
+  for (const { row, file } of rows) checkRow(row, file, bad);
   assert.deepEqual(bad, []);
 });
 
@@ -73,4 +86,29 @@ test('round 3: the leak regexes require a real name character, not just "not ~" 
   assert.ok(!USERS_HOME_DIR_RE.test(grepDirPattern), grepDirPattern);
   assert.ok(USERS_HOME_PATH_RE.test('/Users/alice/x'));
   assert.ok(USERS_HOME_DIR_RE.test('-Users-alice-x'));
+});
+
+// --- Followup: fixtures must be swept too -------------------------------
+
+test('followup item 2: the sweep reports a dirty fixture.exists entry, not just the payload', () => {
+  const input = { file_path: 'src/clean.ts' };
+  const dirtyRow = {
+    id: vectorId('ts', 'PreToolUse', 'Edit', input, true),
+    lang: 'ts', event: 'PreToolUse', tool: 'Edit', input,
+    fixture: { exists: ['-Users-bob/x.ts'] },
+    expected: null, source: 'mined', note: 'x',
+  };
+  const bad = [];
+  checkRow(dirtyRow, 'in-memory', bad);
+  assert.ok(
+    bad.some((m) => /leaked -Users- or -home- project-dir encoding in fixture\.exists\[0\]/.test(m)),
+    bad.join('\n'),
+  );
+
+  // Control: the same row with a clean fixture entry raises no fixture-labelled complaint —
+  // proves the assertion above is about the fixture sweep, not just id re-derivation noise.
+  const cleanRow = { ...dirtyRow, fixture: { exists: ['src/clean.ts'] } };
+  const cleanBad = [];
+  checkRow(cleanRow, 'in-memory', cleanBad);
+  assert.ok(!cleanBad.some((m) => /fixture\.exists/.test(m)), cleanBad.join('\n'));
 });

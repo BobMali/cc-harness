@@ -149,9 +149,12 @@ function walk(dir, fsm) {
 }
 
 // --rebuild: re-run every existing corpus row through the current redactor (cwd unknown at
-// rebuild time, so only structural rules and the word list apply). A dropped row is removed; a
-// row whose payload or id changes is rewritten in place; rows that collapse onto the same id
-// keep only the first. Returns per-file counts merged into the caller's dropped.rebuilt total.
+// rebuild time, so only structural rules and the word list apply). Each fixture.exists entry is
+// re-redacted the same way as the payload — a tightened rule can leave a stale entry behind
+// otherwise. A row dropped on its payload or any fixture entry is removed; a row whose payload,
+// id, or fixture entries change is rewritten in place; rows that collapse onto the same id keep
+// only the first (the discarded row counts under "removed", never under "changed"). Returns
+// per-file counts merged into the caller's dropped.rebuilt total.
 function rebuildFile(file, lang, words) {
   const rows = readJsonl(file);
   const seen = new Set();
@@ -164,12 +167,28 @@ function rebuildFile(file, lang, words) {
     const r = redact(text, { cwd: undefined, words });
     if (r.dropped) { removed += 1; continue; }
     const input = isBash ? { command: r.text } : { file_path: r.text };
-    const id = vectorId(lang, row.event, row.tool, input, Boolean(row.fixture));
-    if (id !== row.id || r.text !== text) changed += 1;
-    if (seen.has(id)) continue;   // two rows collapsed onto one id: keep the first
+
+    let fixture = row.fixture;
+    let fixtureChanged = false;
+    if (row.fixture && Array.isArray(row.fixture.exists)) {
+      const nextExists = [];
+      let fixtureDropped = false;
+      for (const entry of row.fixture.exists) {
+        const fr = redact(entry, { cwd: undefined, words });
+        if (fr.dropped) { fixtureDropped = true; break; }
+        if (fr.text !== entry) fixtureChanged = true;
+        nextExists.push(fr.text);
+      }
+      if (fixtureDropped) { removed += 1; continue; }
+      fixture = { exists: nextExists };
+    }
+
+    const id = vectorId(lang, row.event, row.tool, input, Boolean(fixture));
+    if (seen.has(id)) { removed += 1; continue; }   // two rows collapsed onto one id: keep the first
     seen.add(id);
+    if (id !== row.id || r.text !== text || fixtureChanged) changed += 1;
     const newRow = { id, lang: row.lang, event: row.event, tool: row.tool, input };
-    if (row.fixture) newRow.fixture = row.fixture;
+    if (fixture) newRow.fixture = fixture;
     newRow.expected = row.expected;
     newRow.source = row.source;
     newRow.note = row.note;
@@ -179,8 +198,14 @@ function rebuildFile(file, lang, words) {
   return { changed, removed };
 }
 
-export function mine({ from = DEFAULT_FROM, out = DEFAULT_OUT, wordsFile = DEFAULT_WORDS_FILE, rebuild = false, fsm = fs, log = (s) => process.stdout.write(s + '\n') } = {}) {
-  if (!fsm.existsSync(from)) throw new Error(`transcripts directory not found: ${from}`);
+export function mine(opts = {}) {
+  const { out = DEFAULT_OUT, wordsFile = DEFAULT_WORDS_FILE, rebuild = false, fsm = fs, log = (s) => process.stdout.write(s + '\n') } = opts;
+  // --rebuild is a corpus-only operation: when it is passed with no explicit --from, skip the
+  // transcript walk entirely rather than defaulting to (and possibly failing on) ~/.claude/projects.
+  const fromProvided = opts.from !== undefined;
+  const skipWalk = rebuild && !fromProvided;
+  const from = fromProvided ? opts.from : DEFAULT_FROM;
+  if (!skipWalk && !fsm.existsSync(from)) throw new Error(`transcripts directory not found: ${from}`);
   const words = loadWords(wordsFile, fsm);
   let rebuiltRemoved = 0;
   if (rebuild && fsm.existsSync(out)) {
@@ -196,25 +221,27 @@ export function mine({ from = DEFAULT_FROM, out = DEFAULT_OUT, wordsFile = DEFAU
   const byLangNew = new Map();
   const dropped = { secret: 0, 'sensitive-path': 0, 'escaping-path': 0, personal: 0, shadowed: 0, rebuilt: rebuiltRemoved };
   const seen = new Set();
-  // A new vector whose id already exists in the sibling adversarial corpus is shadowed:
-  // the adversarial corpus already labels that exact (lang, event, tool, input, fixture)
-  // and mining it again would just be a duplicate id waiting to collide at eval time.
-  const adversarialDir = path.join(out, '..', 'adversarial');
-  const adversarialIds = new Set();
-  if (fsm.existsSync(adversarialDir)) {
-    for (const f of fsm.readdirSync(adversarialDir).filter((x) => x.endsWith('.jsonl'))) {
-      for (const row of readJsonl(path.join(adversarialDir, f))) adversarialIds.add(row.id);
+  if (!skipWalk) {
+    // A new vector whose id already exists in the sibling adversarial corpus is shadowed:
+    // the adversarial corpus already labels that exact (lang, event, tool, input, fixture)
+    // and mining it again would just be a duplicate id waiting to collide at eval time.
+    const adversarialDir = path.join(out, '..', 'adversarial');
+    const adversarialIds = new Set();
+    if (fsm.existsSync(adversarialDir)) {
+      for (const f of fsm.readdirSync(adversarialDir).filter((x) => x.endsWith('.jsonl'))) {
+        for (const row of readJsonl(path.join(adversarialDir, f))) adversarialIds.add(row.id);
+      }
     }
-  }
-  for (const file of walk(from, fsm)) {
-    const r = mineFile(file, { fsm, words });
-    dropped.secret += r.dropped.secret; dropped['sensitive-path'] += r.dropped['sensitive-path']; dropped['escaping-path'] += r.dropped['escaping-path']; dropped.personal += r.dropped.personal;
-    for (const v of r.vectors) {
-      if (adversarialIds.has(v.id)) { dropped.shadowed += 1; continue; }
-      if (seen.has(v.id)) continue;
-      seen.add(v.id);
-      if (!byLangNew.has(v.lang)) byLangNew.set(v.lang, []);
-      byLangNew.get(v.lang).push(v);
+    for (const file of walk(from, fsm)) {
+      const r = mineFile(file, { fsm, words });
+      dropped.secret += r.dropped.secret; dropped['sensitive-path'] += r.dropped['sensitive-path']; dropped['escaping-path'] += r.dropped['escaping-path']; dropped.personal += r.dropped.personal;
+      for (const v of r.vectors) {
+        if (adversarialIds.has(v.id)) { dropped.shadowed += 1; continue; }
+        if (seen.has(v.id)) continue;
+        seen.add(v.id);
+        if (!byLangNew.has(v.lang)) byLangNew.set(v.lang, []);
+        byLangNew.get(v.lang).push(v);
+      }
     }
   }
   let added = 0;
