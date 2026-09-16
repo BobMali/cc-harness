@@ -52,7 +52,7 @@ One vector per JSONL line:
 
 ```jsonc
 {
-  "id": "go-7f3a2c",                 // lang + first 6 hex of sha1(lang|tool|normalised payload)
+  "id": "go-7f3a2c",                 // lang + first 6 hex of sha1(lang|event|tool|normalised payload[|exists])
   "lang": "go",                      // selects configs/<lang>.json
   "event": "PreToolUse",             // PreToolUse | PostToolUse
   "tool": "Bash",                    // Bash | Write | Edit | MultiEdit
@@ -82,7 +82,7 @@ One vector per JSONL line:
 Per language, once: create a temp project, copy `configs/<lang>.json` to
 `.claude/harness.json`, create the config's `markerFile`, and write a standard
 regex file at `githooks/conventional-regex.txt` (types
-`feat fix docs test refactor build ci chore`, no scopes) so commit-guard
+`feat fix docs test refactor build ci chore`, any lower-case scope) so commit-guard
 vectors evaluate identically in every language. Load the config through
 `loadConfig` so preset merging and validation follow the production path.
 
@@ -100,8 +100,9 @@ Per vector:
 6. Compare with `expected`.
 
 The guard loop is exported from `lib/cli.mjs` as `evaluateGuards(event, ctx)`
-so the runner and `runHook` share one code path; that export is the only
-production change this suite needs.
+so the runner and `runHook` share one code path; the only production change
+is the exported guard loop; the runner never sets environment variables for
+the plugin.
 
 `--via cli --sample N` additionally spawns `bin/harness.mjs hook <event>` for a
 random sample of N vectors with `CLAUDE_PROJECT_DIR` set to the temp project
@@ -125,7 +126,7 @@ Performance target: 4,000 vectors under ten seconds in-process.
 
 ## 3. Miner and redaction
 
-`node evals/mine.mjs [--from ~/.claude/projects] [--out evals/corpus/mined]`
+`node evals/mine.mjs [--from ~/.claude/projects] [--out evals/corpus/mined] [--rebuild]`
 
 Extraction: every session file including subagent side-chains. For each
 record whose message content holds a `tool_use` block named Bash, Write, Edit,
@@ -142,21 +143,31 @@ session touched the same path. Bash vectors get no fixture.
 Redaction, in order:
 
 1. Replace the `cwd` prefix with `.` inside commands and paths; then any
-   remaining `/Users/<name>` or `/home/<name>` with `~`.
+   remaining `/Users/<name>` or `/home/<name>` with `~`, and Claude Code's
+   project-directory encoding `-Users-<name>-`/`-home-<name>-` (a literal
+   dash-delimited segment, e.g. inside `~/.claude/projects/...`) with
+   `-Users-~-`/`-home-~-`. Rewrite any UUID to a fixed placeholder UUID, and
+   any `session_<20+ alphanumeric characters>` id (e.g. a `Claude-Session:`
+   line) to a fixed placeholder session id.
 2. Drop the vector if the payload matches any of: the words `token`, `secret`,
    `password`, `api[_-]?key` (letter boundaries, so `tokenizer` survives),
    `Authorization:`, a URL with `user:pass@` or with 20+ characters of
    userinfo before `@`, `-u user:pass` / `--user user:pass`, a `-p<password>`
    argument to `login`, `mysql`, `mysqldump`, `mariadb`, `sshpass`, or
    `smbclient`, `-----BEGIN`, a bare run of 32+ hex characters, a run of 32+
-   base64 characters containing a digit, or a vendor-prefixed key
+   base64 characters containing a digit, a vendor-prefixed key
    (`AKIA/ASIA` + 16, `ghp_/gho_/ghu_/ghs_/ghr_`, `github_pat_`, `xox[abprs]-`,
-   `sk-`, `sk_live_/sk_test_`, `glpat-`, `AIza` + 35).
+   `sk-`, `sk_live_/sk_test_`, `glpat-`, `AIza` + 35), or an email address
+   other than the allowlisted `noreply@anthropic.com`.
 3. Drop vectors that reference `.ssh`, `.gnupg`, `.aws`, `.kube`,
    `.docker/config.json`, `.netrc`, `.git-credentials`, `.npmrc`, `.env` or
    `.env.*`, an `id_rsa`/`id_dsa`/`id_ecdsa`/`id_ed25519` file, or a `.pem`,
    `.p12`, or `.pfx` file (paths, not contents; conservative by design).
-4. Truncate commands over 2,000 characters. Heredoc bodies over 40 lines keep
+4. Drop vectors whose payload contains a word (whole word, case-insensitive)
+   from the gitignored `evals/redact.local.json` (`{ "words": [...] }`); the
+   miner also falls back to the note `project <month>` instead of leaking the
+   project directory name itself when that name matches a listed word.
+5. Truncate commands over 2,000 characters. Heredoc bodies over 40 lines keep
    the first and last five lines with a `# … <n> lines elided …` marker line
    between; the guards read only the marker and terminator.
 
@@ -164,6 +175,15 @@ Dedupe and identity: normalise whitespace; key on language, tool, and the
 normalised payload; id = lang prefix + first six hex of SHA-1 over the key.
 Re-mining produces stable ids and only appends new lines with
 `expected: null`.
+
+`--rebuild` re-processes every row already committed under `--out` through
+the current redactor (with `cwd` unknown, so only the structural and
+word-list rules apply) before merging any freshly mined vectors: a row that
+now drops is removed and counted; a row whose payload or id changes is
+rewritten in place, keeping its `expected`, `fixture`, `source`, and `note`;
+rows that collapse onto the same id keep only the first. Use it after a
+redaction rule is tightened, since the existing corpus was mined under the
+old rule.
 
 Never written: `cwd`, session id, timestamps, tool results, surrounding
 conversation. `note` holds the project directory name and the month.

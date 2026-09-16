@@ -54,7 +54,7 @@ test('mine: lang tag, fixture derivation, redaction, dedupe, merge with existing
     assert.ok(rows.every((v) => !JSON.stringify(v).includes('..')));
     assert.ok(rows.every((v) => v.note === `${path.basename(proj.dir)} 2026-08`));
     assert.equal(rows[0].id, vectorId('ts', 'PreToolUse', 'Bash', { command: 'npx vitest run src/a.test.ts' }));
-    assert.deepEqual(r.dropped, { secret: 1, 'sensitive-path': 1, 'escaping-path': 0, personal: 0, shadowed: 0 });
+    assert.deepEqual(r.dropped, { secret: 1, 'sensitive-path': 1, 'escaping-path': 0, personal: 0, shadowed: 0, rebuilt: 0 });
     assert.equal(r.added, 6);
     assert.deepEqual(r.byLang, { ts: 6 });
     assert.ok(log.some((s) => /longest/i.test(s)));
@@ -257,4 +257,69 @@ test('B1: a mined vector whose id already exists in the sibling adversarial corp
     assert.equal(fs.existsSync(path.join(out, 'ts.jsonl')), false);   // nothing left to write for this lang
     assert.ok(log.some((s) => /shadowed=1/.test(s)), log.join('\n'));
   } finally { proj.cleanup(); from.cleanup(); root.cleanup(); }
+});
+
+// --- Final wave ----------------------------------------------------------
+
+test('item 2: --rebuild re-processes existing corpus rows through tightened redaction before merging fresh vectors', () => {
+  const from = makeDataDir(); const out = makeDataDir(); const wordsDir = makeDataDir();
+  try {
+    const dir = path.join(from.dir, '-r-app'); fs.mkdirSync(dir);
+    fs.writeFileSync(path.join(dir, 's1.jsonl'), '');   // no fresh vectors this run
+
+    const rowA = { id: 'ts-aaaaaa', lang: 'ts', event: 'PreToolUse', tool: 'Bash', input: { command: 'echo session_01AbCdEfGhIjKlMnOpQrStUv' }, expected: { kind: 'pass' }, source: 'mined', note: 'app 2026-08' };
+    const rowB = { id: 'ts-bbbbbb', lang: 'ts', event: 'PreToolUse', tool: 'Bash', input: { command: 'echo Alice was here' }, expected: { kind: 'pass' }, source: 'mined', note: 'app 2026-08' };
+    fs.writeFileSync(path.join(out.dir, 'ts.jsonl'), [rowA, rowB].map((r) => JSON.stringify(r)).join('\n') + '\n');
+
+    const wordsFile = path.join(wordsDir.dir, 'redact.local.json');
+    fs.writeFileSync(wordsFile, JSON.stringify({ words: ['Alice'] }));
+
+    const log = [];
+    mine({ from: from.dir, out: out.dir, wordsFile, rebuild: true, log: (s) => log.push(s) });
+
+    const rows = readJsonl(path.join(out.dir, 'ts.jsonl'));
+    assert.equal(rows.length, 1);
+    assert.notEqual(rows[0].id, 'ts-aaaaaa');
+    assert.equal(rows[0].input.command, 'echo session_00000000000000000000000000');
+    assert.deepEqual(rows[0].expected, { kind: 'pass' });
+    assert.equal(rows[0].id, vectorId('ts', 'PreToolUse', 'Bash', { command: 'echo session_00000000000000000000000000' }));
+    assert.ok(log.some((s) => /rebuilt: 1 changed, 1 removed/.test(s)), log.join('\n'));
+  } finally { from.cleanup(); out.cleanup(); wordsDir.cleanup(); }
+});
+
+test('item 2: --rebuild collapses two rows that redact to the same id, keeping the first', () => {
+  const from = makeDataDir(); const out = makeDataDir();
+  try {
+    const dir = path.join(from.dir, '-c-app'); fs.mkdirSync(dir);
+    fs.writeFileSync(path.join(dir, 's1.jsonl'), '');
+
+    const rowA = { id: 'ts-cccccc', lang: 'ts', event: 'PreToolUse', tool: 'Bash', input: { command: 'echo session_01AbCdEfGhIjKlMnOpQrStUv one' }, expected: { kind: 'pass' }, source: 'mined', note: 'first' };
+    const rowB = { id: 'ts-dddddd', lang: 'ts', event: 'PreToolUse', tool: 'Bash', input: { command: 'echo session_02ZzYyXxWwVvUuTtSsRrQqPpOo one' }, expected: { kind: 'ask' }, source: 'mined', note: 'second' };
+    fs.writeFileSync(path.join(out.dir, 'ts.jsonl'), [rowA, rowB].map((r) => JSON.stringify(r)).join('\n') + '\n');
+
+    mine({ from: from.dir, out: out.dir, rebuild: true, log: () => {} });
+
+    const rows = readJsonl(path.join(out.dir, 'ts.jsonl'));
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].note, 'first');   // first row wins the collapse
+  } finally { from.cleanup(); out.cleanup(); }
+});
+
+test('item 8: note falls back to "project" when the project directory name itself matches a personal word', () => {
+  const from = makeDataDir(); const out = makeDataDir(); const wordsDir = makeDataDir();
+  try {
+    const dir = path.join(from.dir, '-alice-app'); fs.mkdirSync(dir);
+    const rec = {
+      type: 'assistant', cwd: '/Users/x/Alice-app', timestamp: '2026-08-29T10:00:00.000Z',
+      message: { role: 'assistant', content: [{ type: 'tool_use', name: 'Bash', input: { command: 'echo hi' } }] },
+    };
+    fs.writeFileSync(path.join(dir, 's1.jsonl'), JSON.stringify(rec) + '\n');
+    const wordsFile = path.join(wordsDir.dir, 'redact.local.json');
+    fs.writeFileSync(wordsFile, JSON.stringify({ words: ['Alice'] }));
+    mine({ from: from.dir, out: out.dir, wordsFile, log: () => {} });
+    const rows = readJsonl(path.join(out.dir, 'none.jsonl'));
+    assert.equal(rows.length, 1);
+    assert.ok(rows[0].note.startsWith('project '), rows[0].note);
+    assert.ok(!JSON.stringify(rows).toLowerCase().includes('alice'));
+  } finally { from.cleanup(); out.cleanup(); wordsDir.cleanup(); }
 });

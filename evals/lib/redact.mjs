@@ -40,6 +40,7 @@ export function redact(text, { cwd, words = [] } = {}) {
   t = t.replace(/\/Users\/[^/\s"':;]+/g, '~').replace(/\/home\/[^/\s"':;]+/g, '~');
   t = t.replace(/-(Users|home)-[^-/\s"']+-/g, '-$1-~-');
   t = t.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '00000000-0000-4000-8000-000000000000');
+  t = t.replace(/\bsession_[A-Za-z0-9]{20,}\b/g, 'session_00000000000000000000000000');
   if (SECRET_PATTERNS.some((re) => re.test(t)) || hasEmail(t)) return { text: t, dropped: 'secret' };
   if (SENSITIVE_PATHS.some((re) => re.test(t))) return { text: t, dropped: 'sensitive-path' };
   if (words.some((w) => new RegExp('(?:^|[^A-Za-z])' + escapeRe(w) + '(?![A-Za-z])', 'i').test(t))) return { text: t, dropped: 'personal' };

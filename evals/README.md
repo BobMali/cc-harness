@@ -4,7 +4,7 @@ An offline corpus of tool payloads evaluated through the production guard path. 
 
 ## Run
 
-The shipped corpus is adversarial-only and `ts`-only until `mine.mjs` has been run, so `--source mined` and `--lang go` (or `php`/`swift`) error with "no vectors selected" until then.
+The shipped corpus holds the adversarial set (`ts`) and a mined set (`go`, `none`); `--lang php` and `--lang swift` have no vectors until a project of that language is mined.
 
     node evals/run.mjs                      # everything; exit 0 clean, 1 mismatch, 2 unlabelled vectors
     node evals/run.mjs --lang ts,go         # filter by language
@@ -43,6 +43,10 @@ Five vectors in the adversarial corpus are currently marked `known_gap: true`:
 
 See `docs/followups.md` for the fix each one needs.
 
+## When the stop gate fails on evals
+
+Run `node evals/run.mjs` without `--quiet` to see the full mismatch list, and judge each one: for a mined vector, decide whether the new decision is an improvement; for an adversarial vector, the expectation is the spec and the code needs fixing instead. Once every mismatch is judged, run `node evals/run.mjs --update` to accept the mined ones, review `git diff evals/corpus/mined` before trusting it, and commit the corpus change together with the code change that caused it.
+
 ## Re-mine
 
     node evals/mine.mjs                    # reads ~/.claude/projects, appends new vectors with expected: null
@@ -50,9 +54,17 @@ See `docs/followups.md` for the fix each one needs.
 
 Review the miner's "longest vectors" list before committing.
 
+## Re-apply tightened redaction
+
+When a redaction rule gets stricter, the existing corpus was mined under the old rule and needs to be swept again:
+
+    node evals/mine.mjs --rebuild          # re-processes every existing row through the current redactor
+    node evals/run.mjs --update            # re-label any row whose id or decision changed
+    # commit the corpus change
+
 ## Redaction guarantees
 
-The miner writes only the command (Bash) or the file path (edit tools), the language, and a fixture list. Absolute paths under the project become `.`; home directories become `~`. Vectors mentioning tokens, secrets, passwords, API keys, authorization headers, credentialed URLs, PEM blocks, or 32+ character hex/base64 runs are dropped, as are vectors touching `.ssh`, `.gnupg`, `.env`, or `.npmrc`. Heredoc bodies over 40 lines are elided; commands over 2,000 characters are truncated. Edit contents, tool results, session ids, and timestamps are never written. Claude Code's project-directory encodings (`-Users-<name>-…`) and session UUIDs are rewritten; vectors containing an email address are dropped. A gitignored `evals/redact.local.json` (`{ "words": [...] }`) lists personal words whose vectors are dropped; it never enters the repo.
+The miner writes only the command (Bash) or the file path (edit tools), the language, and a fixture list. Absolute paths under the project become `.`; home directories become `~`. Vectors mentioning tokens, secrets, passwords, API keys, authorization headers, credentialed URLs, PEM blocks, or 32+ character hex/base64 runs are dropped, as are vectors touching `.ssh`, `.gnupg`, `.aws`, `.kube`, `.docker/config.json`, `.netrc`, `.git-credentials`, `.npmrc`, `.env` or `.env.*`, an `id_rsa`/`id_dsa`/`id_ecdsa`/`id_ed25519` file, or a `.pem`/`.p12`/`.pfx` file. Heredoc bodies over 40 lines are elided; commands over 2,000 characters are truncated. Edit contents, tool results, session ids, and timestamps are never written. Claude Code's project-directory encodings (`-Users-<name>-…`), session UUIDs, and `session_<20+ alphanumeric>` ids (e.g. `Claude-Session:` lines) are rewritten to placeholders; vectors containing an email address other than `noreply@anthropic.com` are dropped. A gitignored `evals/redact.local.json` (`{ "words": [...] }`) lists personal words whose vectors are dropped; it never enters the repo.
 
 ## Languages
 

@@ -110,3 +110,13 @@ test('personal words drop the vector as a whole word, case-insensitively', () =>
   assert.equal(redact('echo malicious', { words: ['Alice'] }).dropped, null);
   assert.equal(redact('cat ALICE.md', { words: ['Alice'] }).dropped, 'personal');
 });
+
+// --- Final wave ----------------------------------------------------------
+
+test('item 1: session ids are rewritten; short faux session_ ids are left alone', () => {
+  assert.equal(
+    redact('Claude-Session: https://claude.ai/code/session_01AbCdEfGhIjKlMnOpQrStUv', { cwd }).text,
+    'Claude-Session: https://claude.ai/code/session_00000000000000000000000000',
+  );
+  assert.equal(redact('session_abc', { cwd }).text, 'session_abc');
+});

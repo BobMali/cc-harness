@@ -24,6 +24,7 @@ export function makeLangProject(lang, configsDir = DEFAULT_CONFIGS) {
   const configFile = path.join(configsDir, `${lang}.json`);
   if (!fs.existsSync(configFile)) throw new Error(`no config for lang "${lang}" in ${configsDir}`);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), `cc-harness-eval-${lang}-`));
+  let cliDir;
   try {
     fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
     fs.copyFileSync(configFile, path.join(dir, '.claude', 'harness.json'));
@@ -34,9 +35,34 @@ export function makeLangProject(lang, configsDir = DEFAULT_CONFIGS) {
     fs.mkdirSync(path.join(dir, 'githooks'), { recursive: true });
     fs.writeFileSync(path.join(dir, 'githooks', 'conventional-regex.txt'), REGEX_FILE);
     for (const c of loaded.config.checks) if (c.ifExists) writeEmpty(path.join(dir, c.ifExists));   // so no check is skipped; exec is stubbed anyway
-    return { dir, lang, config: loaded.config, cleanup: () => fs.rmSync(dir, { recursive: true, force: true }) };
+
+    // A sibling project for --via cli sampling: the real check runner (no stub, no env-var
+    // backdoor) needs a check that actually fails so a sampled PostToolUse spawn observes the
+    // same "armed" decision the in-process FAIL_EXEC stub produces.
+    cliDir = fs.mkdtempSync(path.join(os.tmpdir(), `cc-harness-eval-${lang}-cli-`));
+    fs.mkdirSync(path.join(cliDir, '.claude'), { recursive: true });
+    const cliConfig = {
+      version: 1,
+      preset: 'custom',
+      project: loaded.config.project,
+      commands: loaded.config.commands,
+      checks: [{ name: 'eval-fail', cmd: 'exit 1', fast: true }],
+      guards: { commit: loaded.config.guards.commit, stop: { checks: ['eval-fail'] } },
+    };
+    fs.writeFileSync(path.join(cliDir, '.claude', 'harness.json'), JSON.stringify(cliConfig, null, 2));
+    const cliLoaded = loadConfig(cliDir);
+    if (cliLoaded.status !== 'ok') throw new Error(`cli config ${lang}: ${cliLoaded.status} ${JSON.stringify(cliLoaded.errors ?? [])}`);
+    if (marker) writeEmpty(path.join(cliDir, marker));
+    fs.mkdirSync(path.join(cliDir, 'githooks'), { recursive: true });
+    fs.writeFileSync(path.join(cliDir, 'githooks', 'conventional-regex.txt'), REGEX_FILE);
+
+    return {
+      dir, cliDir, lang, config: loaded.config,
+      cleanup: () => { fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(cliDir, { recursive: true, force: true }); },
+    };
   } catch (e) {
     fs.rmSync(dir, { recursive: true, force: true });
+    if (cliDir) fs.rmSync(cliDir, { recursive: true, force: true });
     throw e;
   }
 }
@@ -45,17 +71,23 @@ function writeEmpty(abs) { fs.mkdirSync(path.dirname(abs), { recursive: true });
 
 function inside(root, abs) { const rel = path.relative(root, abs); return rel && !rel.startsWith('..') && !path.isAbsolute(rel); }
 
+// A file_path of "~/…" names a real home-directory path, not a literal "~" entry inside the
+// temp project; path.resolve(baseDir, '~/…') would create exactly that literal directory.
+function resolveFilePath(baseDir, fp) {
+  return fp.startsWith('~/') ? path.join(os.homedir(), fp.slice(2)) : path.resolve(baseDir, fp);
+}
+
 export function evaluateVector(vector, project, dataDir) {
   const created = [];
   for (const rel of vector.fixture?.exists ?? []) {
-    const abs = path.resolve(project.dir, rel);
+    const abs = resolveFilePath(project.dir, rel);
     if (!inside(project.dir, abs)) continue;
     if (writeEmpty(abs)) created.push(abs);
   }
   try {
     const toolInput = vector.tool === 'Bash'
       ? { command: vector.input.command }
-      : { file_path: path.resolve(project.dir, vector.input.file_path) };
+      : { file_path: resolveFilePath(project.dir, vector.input.file_path) };
     const input = { hook_event_name: vector.event, tool_name: vector.tool, tool_input: toolInput, session_id: 'eval', cwd: project.dir };
     const ctx = { event: vector.event, input, config: project.config, projectDir: project.dir, dataDir, pluginRoot: pluginRoot(), exec: vector.event === 'PostToolUse' ? FAIL_EXEC : STUB_EXEC, fs, now: () => Date.now() };
     const crashed = [];
@@ -82,25 +114,39 @@ export function compare(vector, actual) {
 function envelopeKind(stdout) {
   const s = stdout.trim();
   if (!s) return 'pass';
-  const j = JSON.parse(s);
+  let j;
+  try { j = JSON.parse(s); } catch { return 'malformed'; }
   if (j.hookSpecificOutput?.permissionDecision) return j.hookSpecificOutput.permissionDecision;
   if (j.decision === 'block') return 'block';
   return 'pass';
 }
 
+// Fisher-Yates over a copy: sort(() => rng() - 0.5) is not a uniform shuffle (some engines and
+// rng sequences barely reorder the array), which could leave a small sample missing an entire
+// class of vectors clustered at one end of the corpus.
+export function fisherYates(arr, rng) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 export function sampleViaCli(results, projects, { sample, dataDir, rng = Math.random, cliEnv = {} }) {
   // A crashed in-process result has no real decision to compare against; sampling it would
   // compare the CLI's envelope to a stub, not a decision, so it never enters the pool.
-  const pool = [...results].filter((r) => r.status !== 'crashed').sort(() => rng() - 0.5).slice(0, sample);
+  const pool = fisherYates([...results].filter((r) => r.status !== 'crashed'), rng).slice(0, sample);
   const mismatches = [];
   for (const r of pool) {
     const v = r.vector; const project = projects.get(v.lang);
+    const cliDir = project.cliDir;
     const created = [];
-    for (const rel of v.fixture?.exists ?? []) { const abs = path.resolve(project.dir, rel); if (inside(project.dir, abs) && writeEmpty(abs)) created.push(abs); }
+    for (const rel of v.fixture?.exists ?? []) { const abs = resolveFilePath(cliDir, rel); if (inside(cliDir, abs) && writeEmpty(abs)) created.push(abs); }
     try {
-      const toolInput = v.tool === 'Bash' ? { command: v.input.command } : { file_path: path.resolve(project.dir, v.input.file_path) };
-      const input = JSON.stringify({ hook_event_name: v.event, tool_name: v.tool, tool_input: toolInput, session_id: 'eval-cli', cwd: project.dir });
-      const p = spawnSync(process.execPath, [BIN, 'hook', v.event], { input, encoding: 'utf8', timeout: 30_000, env: { ...process.env, CLAUDE_PROJECT_DIR: project.dir, CLAUDE_PLUGIN_DATA: dataDir, CC_HARNESS_EVAL_EXEC_FAIL: v.event === 'PostToolUse' ? '1' : '', ...cliEnv } });
+      const toolInput = v.tool === 'Bash' ? { command: v.input.command } : { file_path: resolveFilePath(cliDir, v.input.file_path) };
+      const input = JSON.stringify({ hook_event_name: v.event, tool_name: v.tool, tool_input: toolInput, session_id: 'eval-cli', cwd: cliDir });
+      const p = spawnSync(process.execPath, [BIN, 'hook', v.event], { input, encoding: 'utf8', timeout: 30_000, env: { ...process.env, CLAUDE_PROJECT_DIR: cliDir, CLAUDE_PLUGIN_DATA: dataDir, ...cliEnv } });
       if (p.error || p.status !== 0) { mismatches.push({ id: v.id, inProcess: r.actual.kind, viaCli: p.error?.code ?? `exit ${p.status}` }); continue; }
       const viaCli = envelopeKind(p.stdout);
       if (viaCli !== r.actual.kind) mismatches.push({ id: v.id, inProcess: r.actual.kind, viaCli });
