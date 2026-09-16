@@ -120,3 +120,18 @@ test('item 1: session ids are rewritten; short faux session_ ids are left alone'
   );
   assert.equal(redact('session_abc', { cwd }).text, 'session_abc');
 });
+
+// --- Round 2 ---------------------------------------------------------------
+
+test('round 2 item 1: a bare -Users-<name>/-home-<name> encoding (no trailing dash) is also rewritten', () => {
+  assert.equal(
+    redact('cat ~/.claude/projects/-Users-alice', { cwd }).text,
+    'cat ~/.claude/projects/-Users-~',
+  );
+  assert.equal(
+    redact('cat ~/.claude/projects/-Users-alice-projects-app/memory/x.md', { cwd }).text,
+    'cat ~/.claude/projects/-Users-~-projects-app/memory/x.md',
+  );
+  assert.equal(redact('echo -Users-', { cwd }).text, 'echo -Users-');
+  assert.equal(redact('cat ~/.claude/projects/-Users-~', { cwd }).text, 'cat ~/.claude/projects/-Users-~');   // idempotent
+});

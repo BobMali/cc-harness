@@ -38,7 +38,7 @@ export function redact(text, { cwd, words = [] } = {}) {
   const c = cwd ? cwd.replace(/\/+$/, '') : '';
   if (c.length >= 2) t = t.replace(new RegExp(`${escapeRe(c)}(?=/|\\s|["']|$)`, 'g'), '.');
   t = t.replace(/\/Users\/[^/\s"':;]+/g, '~').replace(/\/home\/[^/\s"':;]+/g, '~');
-  t = t.replace(/-(Users|home)-[^-/\s"']+-/g, '-$1-~-');
+  t = t.replace(/-(Users|home)-[^-/\s"']+(?=-|\/|\s|["']|$)/g, '-$1-~');
   t = t.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '00000000-0000-4000-8000-000000000000');
   t = t.replace(/\bsession_[A-Za-z0-9]{20,}\b/g, 'session_00000000000000000000000000');
   if (SECRET_PATTERNS.some((re) => re.test(t)) || hasEmail(t)) return { text: t, dropped: 'secret' };
