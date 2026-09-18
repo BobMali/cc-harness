@@ -4,16 +4,13 @@ Open items found during review that were deliberately not fixed in the branch th
 
 ## Tier 1: a guard can be bypassed or the release is blocked
 
-- **Prefix commands hide the git word.** `timeout 5 git reset --hard` (also `nohup`, `exec`, `xargs`) resolves to the prefix as the tool word, so no git rule applies. Used as the runner fixture's known-gap vector (`test/fixtures/evals/corpus/adversarial/git.jsonl`, `ts-000011`); the runner test asserts it stays open, so swap that fixture when closing this. Fix: extend `PREFIX_WORDS` in `shell.mjs`, skipping `timeout`'s duration argument.
 - **Marketplace install path untested end to end.** The README's `claude plugin marketplace add <owner>/cc-harness` needs the repo pushed; verify the recorded source shape in `~/.claude/plugins/known_marketplaces.json` matches what `init` writes into `extraKnownMarketplaces` before tagging 0.1.0.
-- **Paths outside the project.** `relTo` yields `../…`, which still matches `**/*.ts`; the quality gate arms and the test guard asks for out-of-tree files. Fix: treat a `..` prefix as out of scope in both guards.
 
 ## Tier 2: wrong behaviour that fails safe or over-asks
 
 - **`init` renders CI check steps and the allow list from the preset only.** A hand-written `custom` config needs its CI steps added by hand (this repo did). Fix: render from `harness.json` when it exists, or add a `sync-ci` subcommand.
 - **Wrapper flags and nested wrappers.** `yarn workspace app vitest …`, `pnpm -C dir exec …`, `npm --prefix x run …` resolve to the wrong tool word and over-ask.
 - **Commit guard crashes on `-F <directory>`.** `fs.readFileSync` throws EISDIR; the dispatcher turns it into an `ask`, so it fails safe. Found by the eval runner's crash detection. Fix: wrap the read in try/catch and return `null`.
-- **Test guard's Bash arm ignores `ignoreGlobs`.** `rm node_modules/pkg/a.test.js` prompts. Over-asking only. Fix needs token-level path matching instead of `mentionsAny` on the segment text.
 - **`deepMergeSettings` never removes entries.** A plugin upgrade that changes a harness-owned hook command would leave both entries. Needs an ownership marker before it matters.
 
 ## Tier 3: eval-suite coverage and privacy
@@ -25,6 +22,8 @@ Open items found during review that were deliberately not fixed in the branch th
 
 ## Tier 4: documented scope limits, no action planned
 
+- **Path fragments inside scripts read as real paths.** The test guard's Bash arm matches paths token by token, so a fragment like `root + "/cmd/exit_test.go"` inside a heredoc looks like an absolute path outside the project and does not ask. Textual analysis cannot resolve the concatenation; the old whole-segment match asked on every mention instead, including scratch-directory copies.
+- **Shell variables and command substitution hide the tool word.** `G=git; $G reset --hard` or `$(which git) reset --hard` resolve to `$G` / `$(which`, so no guard applies; closing this needs shell emulation, which the guards deliberately do not attempt. Used as the runner fixture's known-gap vector (`test/fixtures/evals/corpus/adversarial/git.jsonl`, `ts-000011`).
 - **Native Windows.** Checks run through `/bin/sh`; on Windows every check aborts and the quality gate blocks every edit. Documented as unsupported; use WSL. Fix if ever needed: `process.platform === 'win32' ? process.env.ComSpec : '/bin/sh'` plus quoting rules.
 - **Windows-style paths inside Bash commands are not scrubbed.** Transcripts here are macOS.
 - **"Missing `file_path`" on an edit tool is unrepresentable as a vector** (`validateVector` requires a string); the guard's `!fp` branch is covered by unit tests only.

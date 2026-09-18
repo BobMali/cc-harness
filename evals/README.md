@@ -33,12 +33,9 @@ A vector for a tool call with a missing `file_path` is unrepresentable in this f
 
 ## Known gaps
 
-Four vectors in the adversarial corpus are currently marked `known_gap: true`:
+One vector in the adversarial corpus is currently marked `known_gap: true`:
 
-- `../outside.ts` (PostToolUse Edit) — a path outside the project still arms the quality gate.
 - `yarn workspace app vitest run src/a.test.ts` — wrapper flags resolve to the wrong tool word, so the test guard over-asks instead of passing.
-- `rm node_modules/pkg/a.test.js` — the test guard's Bash arm ignores `ignoreGlobs`.
-- `rm ../outside.test.ts` — a path outside the project is not recognized as out of scope by the test guard.
 
 See `docs/followups.md` for the fix each one needs.
 

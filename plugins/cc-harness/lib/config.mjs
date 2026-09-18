@@ -145,3 +145,9 @@ export function relTo(projectDir, p) {
   const abs = path.isAbsolute(p) ? p : path.resolve(projectDir, p);
   return path.relative(projectDir, abs).replace(/\\/g, '/');
 }
+
+// True when a relTo() result points outside the project (a `..` prefix, or an absolute
+// path when the two are on different drives).
+export function isOutside(rel) {
+  return rel === '..' || rel.startsWith('../') || path.isAbsolute(rel);
+}
