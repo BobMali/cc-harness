@@ -4,7 +4,7 @@ Open items found during review that were deliberately not fixed in the branch th
 
 ## Tier 1: a guard can be bypassed or the release is blocked
 
-- **Marketplace install path untested end to end.** The README's `claude plugin marketplace add <owner>/cc-harness` needs the repo pushed; verify the recorded source shape in `~/.claude/plugins/known_marketplaces.json` matches what `init` writes into `extraKnownMarketplaces` before tagging 0.1.0.
+Nothing open. The marketplace install was verified on 2026-09-18: `claude plugin marketplace add BobMali/cc-harness` records `{ "source": "github", "repo": "BobMali/cc-harness" }`, the shape `init` writes into `extraKnownMarketplaces`, and `claude plugin install cc-harness@cc-harness` installs 0.1.0.
 
 ## Tier 2: wrong behaviour that fails safe or over-asks
 
