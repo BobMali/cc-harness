@@ -4,6 +4,7 @@ Open items found during review that were deliberately not fixed in the branch th
 
 ## Guards
 
+- **Prefix commands hide the git word.** `timeout 5 git reset --hard` (also `nohup`, `exec`, `xargs`) resolves to the prefix as the tool word, so no git rule applies. Used as the runner fixture's known-gap vector (`test/fixtures/evals/corpus/adversarial/git.jsonl`, `ts-000011`); the runner test asserts it stays open, so swap that fixture when closing this. Fix: extend `PREFIX_WORDS` in `shell.mjs`, skipping `timeout`'s duration argument.
 - **Commit guard crashes on `-F <directory>`.** `fs.readFileSync` throws EISDIR; the dispatcher turns it into an `ask`, so it fails safe. Found by the eval runner's crash detection. Fix: wrap the read in try/catch and return `null`.
 - **Test guard's Bash arm ignores `ignoreGlobs`.** `rm node_modules/pkg/a.test.js` prompts. Over-asking only. Fix needs token-level path matching instead of `mentionsAny` on the segment text.
 - **Wrapper flags and nested wrappers.** `yarn workspace app vitest …`, `pnpm -C dir exec …`, `npm --prefix x run …` resolve to the wrong tool word and over-ask.
