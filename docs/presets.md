@@ -48,9 +48,9 @@ Each guard has `enabled`. Extra keys: `commit.regexFile`, `commit.rejectAttribut
 
 `commit.rejectAttributionTrailers` only controls the Claude commit guard. The generated `harness-commits.md` rule is a static file rendered once, at `init`/`sync-rules` time, from whatever the config said then — changing this key does not update it; run `harness sync-rules` afterward to regenerate it, or the rule keeps telling Claude to reject trailers regardless of the new setting (`doctor` won't flag the mismatch either — it only checks the rule's version stamp, not its content). The git `commit-msg` hook and CI enforce the trailer check independently, reading the `CC_HARNESS_REJECT_TRAILERS` environment variable (default `1`, i.e. reject); set `CC_HARNESS_REJECT_TRAILERS=0` in the hook's environment to keep the two in sync when you disable the config key.
 
-## ci (preset only)
+## ci
 
-`ci.setupSteps` is a list of GitHub Actions step objects rendered before the check steps in `.github/workflows/harness.yml`. Guards ignore it.
+Optional in both presets and `harness.json`; a `ci` block in `harness.json` replaces the preset's. `ci.setupSteps` is a list of GitHub Actions step objects rendered before the check steps in `.github/workflows/harness.yml` (toolchain setup, dependency install); `ci.extraSteps` is rendered after them (extra jobs such as an eval sample or an artifact upload). Step keys are rendered as written: `run` is single-quoted, `with` values are JSON-quoted, and `if: always()` stays bare. Guards ignore the block. `harness sync-ci` re-renders the workflow from the current `harness.json` without touching anything else.
 
 ## Checklist for a new preset
 

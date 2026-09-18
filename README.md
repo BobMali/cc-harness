@@ -90,6 +90,7 @@ harness hook <event>       # used by hooks.json; reads hook JSON on stdin
 harness init [...]         # bootstrap; see /cc-harness:init
 harness doctor             # explain the install state (exit 1 only on errors; warnings exit 0)
 harness sync-rules         # refresh harness-*.md rules and the git hook after a plugin update
+harness sync-ci            # re-render .github/workflows/harness.yml from harness.json (checks, ci.setupSteps, ci.extraSteps)
 harness version            # print the plugin version
 ```
 
@@ -100,6 +101,6 @@ node --test test/*.test.mjs
 claude plugin validate plugins/cc-harness --strict
 ```
 
-This repository runs cc-harness on itself: `.claude/harness.json` uses the `custom` preset, and its rules, git hook, and CI workflow were produced by its own `init` (the CI check steps were filled in by hand because `init` renders them from the preset, not from a hand-written config).
+This repository runs cc-harness on itself: `.claude/harness.json` uses the `custom` preset, and its rules, git hook, and CI workflow were produced by its own `init` and `sync-ci` (the workflow's setup and extra steps come from the `ci` block in `harness.json`).
 
 Verified on 2026-09-14 with Claude Code 2.1.269 in headless sessions on a scratch TypeScript project: the commit guard denies a non-conforming message before git runs; the test guard blocks an edit to an existing test with its reason; the quality gate returns a failing typecheck right after the edit; the stop gate blocks up to `maxBlocks` times on a failing test and then releases; a project without `.claude/harness.json` sees no guard at all. Note for anyone running `claude -p` under a sandbox: Claude Code creates the plugin data directory under `~/.claude/plugins/data/` before each hook, so a sandbox that denies that write makes every hook fail with EPERM before it starts.
