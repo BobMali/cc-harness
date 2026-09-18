@@ -43,6 +43,7 @@ When the session preflight says rules are stale, run:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/bin/harness.mjs" sync-rules --target "$CLAUDE_PROJECT_DIR"
+node "${CLAUDE_PLUGIN_ROOT}/bin/harness.mjs" sync-ci --target "$CLAUDE_PROJECT_DIR"      # when checks or the ci block in harness.json changed
 ```
 
 If `githooks/conventional-regex.txt` has no `# types:` line, `sync-rules` warns on stderr and points the regenerated commits rule at the regex file itself instead of listing types inline — that is expected when the file was hand-edited.
