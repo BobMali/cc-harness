@@ -43,3 +43,9 @@
 {"id":"ts-5f5155","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git push origin --delete feature"},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"push --delete"}
 {"id":"ts-f4c2cf","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git push -d origin feature"},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"push -d short flag"}
 {"id":"ts-e57b1e","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git push origin HEAD:feature"},"source":"adversarial","expected":{"kind":"pass"},"note":"near miss: refspec with a source"}
+{"id":"ts-53c204","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"timeout 5 git reset --hard"},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"timeout prefix with a duration"}
+{"id":"ts-7bf624","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"nohup git push -f"},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"nohup prefix"}
+{"id":"ts-4836fd","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"sudo -u root git clean -fd"},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"sudo with a value option"}
+{"id":"ts-e90953","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"echo feature | xargs git branch -D"},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"xargs prefix in a pipeline"}
+{"id":"ts-fb8c8c","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"eval \"git reset --hard\""},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"eval body is inspected"}
+{"id":"ts-7fb881","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"timeout 5 echo git reset --hard"},"source":"adversarial","expected":{"kind":"pass"},"note":"near miss behind a prefix"}

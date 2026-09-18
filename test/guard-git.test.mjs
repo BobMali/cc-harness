@@ -63,3 +63,16 @@ test('git push that deletes a remote ref asks; ordinary refspecs and branch -d p
     assert.equal(bash(c), null, `expected pass for: ${c}`);
   }
 });
+
+test('prefix commands and eval do not hide a destructive git command', () => {
+  for (const c of [
+    'timeout 5 git reset --hard', 'nohup git push -f', 'sudo -u root git clean -fd', 'echo feature | xargs git branch -D',
+    'eval "git reset --hard"', "eval 'git stash' 'clear'",
+  ]) {
+    const d = bash(c);
+    assert.equal(d?.kind, 'ask', `expected ask for: ${c}`);
+  }
+  for (const c of ['timeout 5 echo git reset --hard', 'timeout 5 git status', 'eval "git status"']) {
+    assert.equal(bash(c), null, `expected pass for: ${c}`);
+  }
+});
