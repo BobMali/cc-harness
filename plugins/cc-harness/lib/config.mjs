@@ -120,6 +120,12 @@ export function validateConfig(c) {
     if (typeof ch.cmd !== 'string' || !ch.cmd) errors.push(`checks[${i}].cmd must be a non-empty string`);
     if ('fast' in ch && typeof ch.fast !== 'boolean') errors.push(`checks[${i}].fast must be a boolean`);
   });
+  if ('ci' in c && c.ci !== undefined) {
+    if (!isObj(c.ci)) errors.push('ci must be an object');
+    else for (const k of ['setupSteps', 'extraSteps']) {
+      if (k in c.ci && !(Array.isArray(c.ci[k]) && c.ci[k].every(isObj))) errors.push(`ci.${k} must be an array of step objects`);
+    }
+  }
   for (const g of GUARD_NAMES) {
     if (typeof c.guards?.[g]?.enabled !== 'boolean') errors.push(`guards.${g}.enabled must be a boolean`);
   }

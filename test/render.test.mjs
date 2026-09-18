@@ -108,3 +108,24 @@ test('F2: FAST_CHECKS follows the quality scope and both gates report when disab
   const stopDisabled = templateVars({ ...base, config: mergeConfig(config, { guards: { stop: { enabled: false } } }) });
   assert.equal(stopDisabled.STOP_CHECKS, '(stop gate disabled)');
 });
+
+test('CI steps come from config.ci, so a custom config can declare setup and extra steps', () => {
+  const config = mergeConfig(DEFAULTS, {
+    preset: 'custom',
+    checks: [{ name: 'tests', cmd: 'node --test test/*.test.mjs' }],
+    ci: {
+      setupSteps: [{ uses: 'actions/setup-node@v4', with: { 'node-version': '20' } }, { run: 'npm install -g @anthropic-ai/claude-code' }],
+      extraSteps: [{ name: 'sampled evals', run: 'node evals/run.mjs --via cli --sample 100 --json evals/results.json' }, { uses: 'actions/upload-artifact@v4', if: 'always()', with: { name: 'eval-results', path: 'evals/results.json' } }],
+    },
+  });
+  const v = templateVars({ config, types: ['feat'], scopes: [], pluginVersion: '0.1.0', projectName: 'd' });
+  assert.match(v.CI_SETUP_STEPS, /- uses: actions\/setup-node@v4\n\s+with:\n\s+node-version: "20"/);
+  assert.match(v.CI_SETUP_STEPS, /- run: 'npm install -g @anthropic-ai\/claude-code'/);
+  assert.match(v.CI_EXTRA_STEPS, /- name: sampled evals\n\s+run: 'node evals\/run\.mjs --via cli/);
+  assert.match(v.CI_EXTRA_STEPS, /- uses: actions\/upload-artifact@v4\n\s+if: always\(\)\n\s+with:/);
+  const rendered = render(fs.readFileSync(path.join(templatesDir(), 'ci.yml.tmpl'), 'utf8'), v);
+  assert.ok(rendered.indexOf('- name: tests') < rendered.indexOf('- name: sampled evals'), 'extra steps render after the check steps');
+  // a config without a ci block renders empty step lists, not placeholders
+  const bare = templateVars({ config: mergeConfig(DEFAULTS, { preset: 'custom' }), types: ['feat'], scopes: [], pluginVersion: '0.1.0', projectName: 'd' });
+  assert.equal(bare.CI_SETUP_STEPS, ''); assert.equal(bare.CI_EXTRA_STEPS, '');
+});

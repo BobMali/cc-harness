@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { Writable } from 'node:stream';
-import { planInit, init, syncRules, parseInitArgs, defaultMarketplace } from '../plugins/cc-harness/lib/init.mjs';
+import { planInit, init, syncRules, syncCi, parseInitArgs, defaultMarketplace } from '../plugins/cc-harness/lib/init.mjs';
 import { loadConfig } from '../plugins/cc-harness/lib/config.mjs';
 import { argValue } from '../plugins/cc-harness/lib/cli.mjs';
 import { ruleStamp, RULE_NAMES } from '../plugins/cc-harness/lib/doctor.mjs';
@@ -275,4 +275,27 @@ test('parseInitArgs', () => {
   assert.equal(o.force, true); assert.equal(o.dryRun, true); assert.equal(o.targetDir, '/t'); assert.equal(o.marketplace, 'o/r');
   const d = parseInitArgs([], { CLAUDE_PROJECT_DIR: '/proj' });
   assert.equal(d.targetDir, '/proj'); assert.equal(d.preset, 'ts'); assert.equal(d.projectName, 'proj'); assert.ok(d.types.includes('feat'));
+});
+
+test('syncCi re-renders only the workflow, from harness.json including its ci block', () => {
+  const p = makeProject({ files: { 'package.json': '{}' } });
+  try {
+    init(base(p.dir), io());
+    const cfg = JSON.parse(p.read('.claude/harness.json'));
+    cfg.checks = [{ name: 'tests', cmd: 'node --test' }]; cfg.guards = { stop: { checks: ['tests'] } };   // the preset's stop list names checks we dropped
+    cfg.ci = { setupSteps: [{ run: 'echo setup' }], extraSteps: [{ name: 'after', run: 'echo after' }] };
+    p.write('.claude/harness.json', JSON.stringify(cfg));
+    p.write('.github/workflows/harness.yml', 'stale'); p.write('CLAUDE.md', 'mine'); p.write('.claude/rules/harness-done.md', 'stale');
+    assert.equal(syncCi({ targetDir: p.dir, pluginVersion: '0.2.0' }, io()), 0);
+    const yml = p.read('.github/workflows/harness.yml');
+    assert.match(yml, /- run: 'echo setup'/);
+    assert.match(yml, /- name: tests\n\s+run: 'node --test'/);
+    assert.match(yml, /- name: after\n\s+run: 'echo after'/);
+    assert.match(yml, /CC_HARNESS_REJECT_TRAILERS: "1"/);
+    assert.equal(p.read('CLAUDE.md'), 'mine'); assert.equal(p.read('.claude/rules/harness-done.md'), 'stale');
+    const o = io();
+    fs.rmSync(path.join(p.dir, '.claude/harness.json'));
+    assert.equal(syncCi({ targetDir: p.dir }, o), 1);
+    assert.match(o.stderr.text(), /harness\.json not found/);
+  } finally { p.cleanup(); }
 });

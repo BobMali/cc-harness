@@ -53,7 +53,9 @@ function yamlStep(step, indent = '      ') {
   return lines.join('\n');
 }
 
-export function templateVars({ config, preset = {}, types, scopes, pluginVersion, projectName }) {
+// `ci.setupSteps` and `ci.extraSteps` come from the merged config, so a preset's steps and a
+// custom harness.json's steps go through the same path (a user block replaces the preset's).
+export function templateVars({ config, types, scopes, pluginVersion, projectName }) {
   const checks = config.checks;
   const commands = checks.length
     ? '```sh\n' + checks.map((c) => `${c.cmd.padEnd(44)} # ${c.name}${c.fast ? ' (fast)' : ''}`).join('\n') + '\n```'
@@ -62,7 +64,8 @@ export function templateVars({ config, preset = {}, types, scopes, pluginVersion
     const run = c.ifExists ? `[ -e "${c.ifExists}" ] || exit 0; ${c.cmd}` : c.cmd;
     return yamlStep({ name: c.name, run });
   }).join('\n');
-  const ciSetup = (preset.ci?.setupSteps ?? []).map((s) => yamlStep(s)).join('\n');
+  const ciSetup = (config.ci?.setupSteps ?? []).map((s) => yamlStep(s)).join('\n');
+  const ciExtra = (config.ci?.extraSteps ?? []).map((s) => yamlStep(s)).join('\n');
   const rejectTrailers = config.guards.commit.rejectAttributionTrailers;
   const qualityEnabled = isGuardEnabled(config, 'quality');
   const stopEnabled = isGuardEnabled(config, 'stop');
@@ -85,5 +88,6 @@ export function templateVars({ config, preset = {}, types, scopes, pluginVersion
     GUARDS: GUARD_NAMES.filter((g) => isGuardEnabled(config, g)).join(', '),
     CI_SETUP_STEPS: ciSetup,
     CI_CHECK_STEPS: ciChecks,
+    CI_EXTRA_STEPS: ciExtra,
   };
 }

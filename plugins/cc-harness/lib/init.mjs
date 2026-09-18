@@ -99,7 +99,7 @@ export function planInit(opts) {
   // checks/commands/permissions just because a valid harness.json already exists.
   const reuseExisting = loaded.status === 'ok' && loaded.config.preset === opts.preset;
   const config = reuseExisting ? loaded.config : presetConfig;
-  const vars = templateVars({ config, preset, types: opts.types, scopes: opts.scopes, pluginVersion: version, projectName: opts.projectName });
+  const vars = templateVars({ config, types: opts.types, scopes: opts.scopes, pluginVersion: version, projectName: opts.projectName });
   const tpl = (rel) => fs.readFileSync(path.join(tdir, rel), 'utf8');
   const exists = (rel) => fs.existsSync(path.join(opts.targetDir, rel));
   const writes = [];
@@ -189,13 +189,14 @@ export function init(opts, io) {
   return 0;
 }
 
-export function syncRules(opts, io) {
+// Shared by sync-rules and sync-ci: load harness.json and the commit regex file, and build
+// the template variables from them. Returns null (after reporting) when the config is unusable.
+function loadSyncVars(name, opts, io) {
   const targetDir = path.resolve(opts.targetDir);
   const version = opts.pluginVersion ?? pluginVersion();
   const loaded = loadConfig(targetDir, opts.presetsDir ? { presetsDir: opts.presetsDir } : {});
-  if (loaded.status !== 'ok') { io.stderr.write(`cc-harness sync-rules: ${loaded.status === 'absent' ? '.claude/harness.json not found; run init first' : loaded.errors.join('; ')}\n`); return 1; }
+  if (loaded.status !== 'ok') { io.stderr.write(`cc-harness ${name}: ${loaded.status === 'absent' ? '.claude/harness.json not found; run init first' : loaded.errors.join('; ')}\n`); return null; }
   const config = loaded.config;
-  const preset = config.preset === 'custom' ? {} : (loadPreset(config.preset, opts.presetsDir ?? defaultPresetsDir()) ?? {});
   const regexRel = config.guards.commit.regexFile;
   const regexAbs = path.join(targetDir, regexRel);
   const regexExists = fs.existsSync(regexAbs);
@@ -203,21 +204,39 @@ export function syncRules(opts, io) {
   if (regexExists) {
     rules = parseRegexFile(fs.readFileSync(regexAbs, 'utf8'));
   } else {
-    io.stderr.write(`cc-harness sync-rules: ${regexRel} regex file not found; run init\n`);
+    io.stderr.write(`cc-harness ${name}: ${regexRel} regex file not found; run init\n`);
   }
   const noTypesLine = regexExists && rules.types.length === 0;
   if (noTypesLine) {
-    io.stderr.write(`cc-harness sync-rules: ${regexRel} has no "# types:" line; the commits rule will point at the file instead of listing types\n`);
+    io.stderr.write(`cc-harness ${name}: ${regexRel} has no "# types:" line; the commits rule will point at the file instead of listing types\n`);
   }
-  const vars = templateVars({ config, preset, types: rules.types.length ? rules.types : DEFAULT_TYPES, scopes: rules.scopes, pluginVersion: version, projectName: path.basename(targetDir) });
+  const vars = templateVars({ config, types: rules.types.length ? rules.types : DEFAULT_TYPES, scopes: rules.scopes, pluginVersion: version, projectName: path.basename(targetDir) });
   if (noTypesLine) {
     vars.COMMIT_TYPES = `see ${regexRel} (line 1 is the rule)`;
     vars.COMMIT_SCOPES_LINE = `see ${regexRel}`;
   }
-  const tdir = opts.templatesDir ?? templatesDir();
+  return { targetDir, version, vars, tdir: opts.templatesDir ?? templatesDir() };
+}
+
+export function syncRules(opts, io) {
+  const ctx = loadSyncVars('sync-rules', opts, io);
+  if (!ctx) return 1;
+  const { targetDir, version, vars, tdir } = ctx;
   const writes = RULE_NAMES.map((n) => ({ rel: `.claude/rules/harness-${n}.md`, content: render(fs.readFileSync(path.join(tdir, 'rules', `harness-${n}.md.tmpl`), 'utf8'), vars), action: 'overwrite' }));
   writes.push({ rel: 'githooks/commit-msg', content: render(fs.readFileSync(path.join(tdir, 'githooks', 'commit-msg.tmpl'), 'utf8'), vars), action: 'overwrite', mode: 0o755 });
   applyWrites(targetDir, writes);
   io.stdout.write(`cc-harness sync-rules: refreshed ${writes.length} files to v${version}\n`);
+  return 0;
+}
+
+// Re-render .github/workflows/harness.yml from harness.json (checks, ci.setupSteps,
+// ci.extraSteps, the trailer setting) without touching anything else init wrote.
+export function syncCi(opts, io) {
+  const ctx = loadSyncVars('sync-ci', opts, io);
+  if (!ctx) return 1;
+  const { targetDir, vars, tdir } = ctx;
+  const rel = '.github/workflows/harness.yml';
+  applyWrites(targetDir, [{ rel, content: render(fs.readFileSync(path.join(tdir, 'ci.yml.tmpl'), 'utf8'), vars), action: 'overwrite' }]);
+  io.stdout.write(`cc-harness sync-ci: refreshed ${rel}\n`);
   return 0;
 }

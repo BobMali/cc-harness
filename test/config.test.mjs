@@ -82,3 +82,12 @@ test('helpers', () => {
   assert.equal(relTo('/p', '/p/src/a.ts'), 'src/a.ts');
   assert.equal(relTo('/p', 'src/a.ts'), 'src/a.ts');
 });
+
+test('validateConfig checks the optional ci block: setupSteps and extraSteps are arrays of step objects', () => {
+  const ok = mergeConfig(DEFAULTS, { ci: { setupSteps: [{ run: 'npm ci' }], extraSteps: [{ uses: 'actions/upload-artifact@v4', if: 'always()' }] } });
+  assert.deepEqual(validateConfig(ok), []);
+  assert.deepEqual(validateConfig(mergeConfig(DEFAULTS, { ci: { setupSteps: [] } })), []);
+  assert.match(validateConfig({ ...DEFAULTS, ci: 'x' }).join('\n'), /ci must be an object/);
+  assert.match(validateConfig({ ...DEFAULTS, ci: { setupSteps: 'npm ci' } }).join('\n'), /ci\.setupSteps must be an array of step objects/);
+  assert.match(validateConfig({ ...DEFAULTS, ci: { extraSteps: [1] } }).join('\n'), /ci\.extraSteps must be an array of step objects/);
+});
