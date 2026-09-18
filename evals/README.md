@@ -33,9 +33,7 @@ A vector for a tool call with a missing `file_path` is unrepresentable in this f
 
 ## Known gaps
 
-One vector in the adversarial corpus is currently marked `known_gap: true`:
-
-- `yarn workspace app vitest run src/a.test.ts` — wrapper flags resolve to the wrong tool word, so the test guard over-asks instead of passing.
+No vector in the adversarial corpus is currently marked `known_gap: true`. The runner fixture under `test/fixtures/` keeps one deliberately, to exercise the `known-gap` and `gap-closed` statuses.
 
 See `docs/followups.md` for the fix each one needs.
 

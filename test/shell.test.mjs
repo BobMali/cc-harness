@@ -141,3 +141,15 @@ test('resolveTool skips prefix commands and their options: timeout, nohup, xargs
   assert.deepEqual(resolveTool(tokenize('nice -n 10 git status')), { word: 'git', args: ['status'] });
   assert.deepEqual(resolveTool(tokenize('timeout 5')), { word: '', args: [] });
 });
+
+test('resolveTool skips wrapper flags, value options, yarn workspace, and nested wrappers', () => {
+  assert.deepEqual(resolveTool(tokenize('yarn workspace app vitest run x.test.ts'), W), { word: 'vitest', args: ['run', 'x.test.ts'] });
+  assert.deepEqual(resolveTool(tokenize('pnpm -C packages/app exec vitest run'), W), { word: 'vitest', args: ['run'] });
+  assert.deepEqual(resolveTool(tokenize('pnpm --filter app exec vitest run'), W), { word: 'vitest', args: ['run'] });
+  assert.deepEqual(resolveTool(tokenize('npm --prefix packages/app run lint:fix'), W), { word: 'lint:fix', args: [] });
+  assert.deepEqual(resolveTool(tokenize('npm -w app test -- x.test.ts'), W), { word: 'test', args: ['--', 'x.test.ts'] });
+  assert.deepEqual(resolveTool(tokenize('npx -y -p vitest vitest run'), W), { word: 'vitest', args: ['run'] });
+  assert.deepEqual(resolveTool(tokenize('pnpm exec npx vitest run'), W), { word: 'vitest', args: ['run'] });
+  assert.deepEqual(resolveTool(tokenize('yarn --cwd packages/app vitest'), W), { word: 'vitest', args: [] });
+  assert.deepEqual(resolveTool(tokenize('npm run'), W), { word: 'npm', args: [] });
+});
