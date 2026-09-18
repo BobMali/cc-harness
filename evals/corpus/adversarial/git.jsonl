@@ -39,3 +39,7 @@
 {"id":"ts-94bd90","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"bash -lc 'git clean -fd'"},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"combined short flags -lc"}
 {"id":"ts-6533ec","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"bash -c 'sh -c \"git reset --hard\"'"},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"nested shell wrappers"}
 {"id":"ts-ab0b32","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"bash -c \"echo git reset --hard\""},"source":"adversarial","expected":{"kind":"pass"},"note":"near miss inside a wrapper body"}
+{"id":"ts-812a5e","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git push origin :feature"},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"delete by empty-source refspec"}
+{"id":"ts-5f5155","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git push origin --delete feature"},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"push --delete"}
+{"id":"ts-f4c2cf","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git push -d origin feature"},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"push -d short flag"}
+{"id":"ts-e57b1e","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git push origin HEAD:feature"},"source":"adversarial","expected":{"kind":"pass"},"note":"near miss: refspec with a source"}

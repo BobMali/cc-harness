@@ -52,3 +52,14 @@ test('destructive git commands inside a sh -c body ask; near misses inside one p
     assert.equal(bash(c), null, `expected pass for: ${c}`);
   }
 });
+
+test('git push that deletes a remote ref asks; ordinary refspecs and branch -d pass', () => {
+  for (const c of ['git push origin :feature', 'git push origin --delete feature', 'git push -d origin feature', 'git push --delete origin v1.0']) {
+    const d = bash(c);
+    assert.equal(d?.kind, 'ask', `expected ask for: ${c}`);
+    assert.match(d.reason, /deletes a remote branch or tag/);
+  }
+  for (const c of ['git push origin HEAD:feature', 'git push origin main:main', 'git push origin :', 'git branch -d merged']) {
+    assert.equal(bash(c), null, `expected pass for: ${c}`);
+  }
+});
