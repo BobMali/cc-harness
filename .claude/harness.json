@@ -16,5 +16,15 @@
     { "name": "tests", "cmd": "node --test test/*.test.mjs" },
     { "name": "evals", "cmd": "node evals/run.mjs --quiet" }
   ],
-  "guards": { "stop": { "checks": ["syntax", "tests", "evals"] } }
+  "guards": { "stop": { "checks": ["syntax", "tests", "evals"] } },
+  "ci": {
+    "setupSteps": [
+      { "uses": "actions/setup-node@v4", "with": { "node-version": "20" } },
+      { "run": "npm install -g @anthropic-ai/claude-code" }
+    ],
+    "extraSteps": [
+      { "name": "evals via the cli", "run": "node evals/run.mjs --via cli --sample 100 --json evals/results.json" },
+      { "uses": "actions/upload-artifact@v4", "if": "always()", "with": { "name": "eval-results", "path": "evals/results.json" } }
+    ]
+  }
 }
