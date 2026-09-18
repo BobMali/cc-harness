@@ -59,3 +59,10 @@ test('a commit inside a sh -c body is checked too', () => {
     assert.equal(run(p, `sh -c 'git add . && git commit -m "feat: ok"'`), null);
   } finally { p.cleanup(); }
 });
+
+test('-F pointing at a directory does not throw; git itself will reject it', () => {
+  const p = makeProject({ files: { ...files, 'msgs/.keep': '' } });
+  try {
+    assert.equal(run(p, 'git commit -F msgs'), null);
+  } finally { p.cleanup(); }
+});
