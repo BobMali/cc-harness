@@ -8,7 +8,7 @@ export const GUARD_NAMES = ['test', 'commit', 'quality', 'git', 'stop', 'preflig
 export const BUILTIN_SAFE = [
   'cat', 'head', 'tail', 'less', 'more', 'grep', 'rg', 'egrep', 'fgrep', 'wc', 'ls', 'stat', 'file',
   'realpath', 'basename', 'dirname', 'sort', 'uniq', 'cut', 'tr', 'nl', 'column', 'bat', 'diff', 'cmp',
-  'shasum', 'md5', 'md5sum', 'echo', 'printf', 'true', 'test', 'which', 'pwd',
+  'shasum', 'md5', 'md5sum', 'echo', 'printf', 'true', 'test', 'which', 'pwd', 'sed',
 ];
 
 export const DEFAULTS = Object.freeze({

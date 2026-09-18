@@ -241,7 +241,14 @@ function entrySaysWrite(tokens, w) {
   return true;
 }
 
+// Commands that are read-only unless a flag turns them into an in-place edit. sed's -i may
+// be attached to a suffix (-i.bak) or clustered (-ni), so match the cluster, not the token.
+const BUILTIN_IN_PLACE = {
+  sed: (t) => /^-[a-zA-Z]*i/.test(t) || /^--in-place/.test(t),
+};
+
 export function isWrite(tokens, word, writeCommands = []) {
+  if (BUILTIN_IN_PLACE[word] && tokens.some(BUILTIN_IN_PLACE[word])) return true;
   for (const w of writeCommands) {
     if (w.cmd !== word) continue;
     if (entrySaysWrite(tokens, w)) return true;

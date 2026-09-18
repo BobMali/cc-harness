@@ -31,3 +31,6 @@
 {"id":"ts-2b3b4c","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"rm ../outside.test.ts"},"source":"adversarial","expected":{"kind":"pass"},"note":"path outside the project is out of scope"}
 {"id":"ts-141913","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"echo x > ../outside.test.ts"},"source":"adversarial","expected":{"kind":"pass"},"note":"redirect into a path outside the project"}
 {"id":"ts-5c5eff","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"rm ../outside.test.ts && rm src/a.test.ts"},"source":"adversarial","expected":{"kind":"ask","guard":"test"},"note":"in-tree test file after an out-of-tree one"}
+{"id":"ts-41152b","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"sed -n '1,5p' src/a.test.ts"},"source":"adversarial","expected":{"kind":"pass"},"note":"read-only sed"}
+{"id":"ts-76c46a","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"sed -i.bak 's/a/b/' src/a.test.ts"},"source":"adversarial","expected":{"kind":"ask","guard":"test"},"note":"sed -i with an attached suffix"}
+{"id":"ts-f09524","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"sed --in-place 's/a/b/' src/a.test.ts"},"source":"adversarial","expected":{"kind":"ask","guard":"test"},"note":"sed long in-place flag"}
