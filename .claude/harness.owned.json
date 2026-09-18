@@ -1,0 +1,31 @@
+{
+  "generatedBy": "cc-harness init; do not edit",
+  "version": 1,
+  "permissions": {
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)"
+    ],
+    "ask": [
+      "Bash(git push:*)",
+      "Bash(rm:*)"
+    ],
+    "deny": [
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Edit(**/.env)",
+      "Edit(**/.env.*)",
+      "Read(**/*.pem)",
+      "Edit(**/*.pem)",
+      "Read(**/credentials.*)",
+      "Edit(**/credentials.*)",
+      "Read(~/.ssh/**)",
+      "Edit(~/.ssh/**)",
+      "Read(~/.gnupg/**)",
+      "Edit(~/.gnupg/**)"
+    ]
+  }
+}

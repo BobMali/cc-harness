@@ -15,6 +15,7 @@ Nothing open. The marketplace install was verified on 2026-09-18: `claude plugin
 - **sed can write through its `w` command without `-i`.** `sed -n '/x/w out_test.go' src.go` creates a file from inside the script; the guard treats sed as read-only unless an in-place flag is present, so this passes. Fix: scan script arguments for `w <path>` and `W <path>` and treat a test-file target as a write.
 - **`smbclient -U me%pw` and bare `mysql -p` are not redacted.** Low frequency; add when seen.
 - **The miner emits PreToolUse vectors only.** Pairing each Edit/Write with a PostToolUse vector would exercise the quality gate on mined data (about 365 vectors).
+- **`doctor` does not check the workflow or the owned-entries record.** A `harness.json` edit that changes checks or the `ci` block leaves `.github/workflows/harness.yml` stale until CI disagrees, and a hand-edited `settings.json` can drift from `.claude/harness.owned.json`. Fix: have `doctor` render the workflow and compare it against disk, and report owned entries missing from settings.
 - **The dogfood `syntax` check and the CI `syntax` step do not `node --check` files under `evals/`.** The `evals` check exercises the runner end to end instead.
 - **The cwd substitution is boundary-anchored**, so `PATH=/cwd:/bin` forms keep the literal cwd (no username, since home directories are scrubbed separately).
 
