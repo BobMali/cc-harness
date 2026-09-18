@@ -24,7 +24,7 @@ The stop gate arms only on edits made through Claude's Write/Edit tools. A sourc
 ## Install
 
 ```sh
-claude plugin marketplace add BobMali/cc-harness      # replace with your fork's owner/repo if you forked
+claude plugin marketplace add BobMali/cc-harness    # replace with your fork's owner/repo if you forked
 claude plugin install cc-harness@cc-harness
 ```
 
