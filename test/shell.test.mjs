@@ -86,7 +86,7 @@ test('isSafe: builtin list, config list, non-destructive git subcommands', () =>
   const cfg = mergeConfig(DEFAULTS, { commands: { safe: ['vitest'] } });
   assert.equal(isSafe({ word: 'cat', args: [] }, cfg), true);
   assert.equal(isSafe({ word: 'vitest', args: ['run'] }, cfg), true);
-  assert.equal(isSafe({ word: 'sed', args: [] }, cfg), false);
+  assert.equal(isSafe({ word: 'perl', args: [] }, cfg), false);
   assert.equal(isSafe({ word: 'git', args: ['diff', 'x.test.ts'] }, cfg), true);
   assert.equal(isSafe({ word: 'git', args: ['checkout', 'x.test.ts'] }, cfg), false);
   assert.equal(isSafe({ word: 'test', args: [] }, cfg), true);

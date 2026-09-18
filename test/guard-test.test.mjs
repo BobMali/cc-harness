@@ -81,3 +81,15 @@ test('paths outside the project and ignored paths are out of scope in both arms'
     assert.equal(bash('echo x > x.test.ts')?.kind, 'ask');
   } finally { p.cleanup(); }
 });
+
+test('read-only sed on a test file passes; in-place sed asks', () => {
+  const p = makeProject({ files: { 'x.test.ts': '' } });
+  const bash = (command) => evaluate(ctx(p, 'Bash', { command }));
+  try {
+    assert.equal(bash("sed -n '1,5p' x.test.ts"), null);
+    assert.equal(bash("sed -e 's/a/b/' x.test.ts | head"), null);
+    assert.equal(bash("sed -i.bak 's/a/b/' x.test.ts")?.kind, 'ask');
+    assert.equal(bash("sed --in-place 's/a/b/' x.test.ts")?.kind, 'ask');
+    assert.equal(bash("sed -ni 's/a/b/p' x.test.ts")?.kind, 'ask');
+  } finally { p.cleanup(); }
+});
