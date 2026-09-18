@@ -7,7 +7,7 @@ import { guardsFor } from './guards/index.mjs';
 import { pluginRoot, pluginVersion } from './meta.mjs';
 import { defaultExec } from './checks.mjs';
 import { diagnose } from './doctor.mjs';
-import { init, syncRules, parseInitArgs } from './init.mjs';
+import { init, syncRules, syncCi, parseInitArgs } from './init.mjs';
 
 const USAGE = `usage: harness <command>
 
@@ -15,6 +15,7 @@ const USAGE = `usage: harness <command>
   init [--preset ts|custom] [--types a,b] [--scopes a,b] [--marketplace owner/repo|path] [--force] [--dry-run] [--target dir] [--name <project>]
   doctor [--target dir]
   sync-rules [--target dir]
+  sync-ci [--target dir]
   version
 `;
 
@@ -29,6 +30,8 @@ export async function run(argv, io) {
       return runDoctor(rest, io);
     case 'sync-rules':
       return runSyncRules(rest, io);
+    case 'sync-ci':
+      return syncCi({ targetDir: argValue(rest, '--target') ?? io.env.CLAUDE_PROJECT_DIR ?? process.cwd() }, io);
     case 'version':
       io.stdout.write(pluginVersion() + '\n');
       return 0;
