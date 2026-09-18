@@ -6,3 +6,4 @@
 - An existing test is a contract. Changing or deleting one needs explicit permission: explain what the test gets wrong and wait for a yes. The test guard prompts on edits to files matching `test/**/*.test.mjs`; a prompt is a request for a human decision, not an obstacle to route around.
 - Never weaken an assertion to make a test pass. If a test is wrong, say so and ask.
 - Running tests never needs permission.
+- Read files with the Read tool, not with shell readers such as `sed -n`, `cat`, or `head`. The guards treat `sed -i` as a write and other sed calls as read-only, but the Read tool never needs a decision at all.

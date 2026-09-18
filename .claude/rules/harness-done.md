@@ -3,6 +3,6 @@
 # Definition of done
 
 - Never report work as done based on reasoning about the code. Run the checks and read the output.
-- Before a turn can end with changed source files, these checks must pass (the stop gate runs them): syntax, tests.
+- Before a turn can end with changed source files, these checks must pass (the stop gate runs them): syntax, tests, evals.
 - After every source edit the fast checks run automatically: syntax, validate. When one fails, fix it before starting new work.
 - If a check cannot run (missing tool, sandbox restriction), say so explicitly instead of claiming success.
