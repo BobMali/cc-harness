@@ -264,8 +264,8 @@ test('item8: defaultMarketplace falls back to known_marketplaces.json before the
     assert.equal(defaultMarketplace({ candidateDir: emptyCandidate, knownMarketplacesFile: gh }), 'acme/cc-harness');
     const dir = p.write('known-dir.json', JSON.stringify({ 'cc-harness': { source: { source: 'directory', path: '/local/checkout' } } }));
     assert.equal(defaultMarketplace({ candidateDir: emptyCandidate, knownMarketplacesFile: dir }), '/local/checkout');
-    assert.equal(defaultMarketplace({ candidateDir: emptyCandidate, knownMarketplacesFile: '/does/not/exist.json' }), 'malek/cc-harness');
-    assert.equal(defaultMarketplace({ candidateDir: emptyCandidate, knownMarketplacesFile: p.write('known-bad.json', 'not json') }), 'malek/cc-harness');
+    assert.equal(defaultMarketplace({ candidateDir: emptyCandidate, knownMarketplacesFile: '/does/not/exist.json' }), 'BobMali/cc-harness');
+    assert.equal(defaultMarketplace({ candidateDir: emptyCandidate, knownMarketplacesFile: p.write('known-bad.json', 'not json') }), 'BobMali/cc-harness');
   } finally { p.cleanup(); fs.rmSync(emptyCandidate, { recursive: true, force: true }); }
 });
 

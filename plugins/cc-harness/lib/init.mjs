@@ -25,7 +25,7 @@ export function defaultMarketplace({ knownMarketplacesFile, candidateDir } = {})
     if (source?.source === 'github' && source.repo) return source.repo;
     if (source?.source === 'directory' && source.path) return source.path;
   } catch { /* no known_marketplaces.json, unreadable, or invalid JSON: fall through */ }
-  return 'malek/cc-harness';
+  return 'BobMali/cc-harness';
 }
 
 export function parseInitArgs(args, env) {
