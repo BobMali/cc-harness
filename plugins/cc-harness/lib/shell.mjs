@@ -13,7 +13,17 @@ const PREFIX_COMMANDS = {
   exec: { values: ['-a'] },
   xargs: { values: ['-n', '-P', '-I', '-L', '-s', '-d', '-a', '-E', '-i', '--max-args', '--max-procs', '--replace', '--max-lines', '--max-chars', '--delimiter', '--arg-file', '--eof'] },
 };
-const SKIP_AFTER_WRAPPER = new Set(['run', 'run-script', 'exec', 'dlx', 'x', '--', '-y', '--yes', '-s', '--silent', '-q', '--quiet']);
+const SKIP_AFTER_WRAPPER = new Set(['run', 'run-script', 'exec', 'dlx', 'x', '--']);
+// Wrapper options that take the next token as a value, so it is not mistaken for the tool word.
+// yarn's `workspace <name>` is a subcommand, but it consumes one token the same way.
+const WRAPPER_VALUE_OPTS = {
+  npm: ['-w', '--workspace', '--prefix', '-C', '--userconfig', '--registry', '--loglevel'],
+  npx: ['-p', '--package', '-c', '--call'],
+  pnpm: ['-C', '--dir', '--filter', '-F', '--workspace-concurrency'],
+  yarn: ['--cwd', 'workspace'],
+  bun: ['--cwd', '--filter'],
+  bunx: [],
+};
 const GIT_SAFE_SUB = new Set(['status', 'diff', 'log', 'show', 'blame', 'grep', 'ls-files', 'rev-parse', 'branch', 'remote', 'add', 'commit', 'tag', 'describe']);
 
 export function splitSegments(cmdline) {
@@ -143,9 +153,19 @@ export function resolveTool(tokens, runnerWrappers = []) {
   if (i >= tokens.length) return { word: '', args: [] };
   let word = base(tokens[i]);
   i++;
-  if (runnerWrappers.includes(word)) {
-    while (i < tokens.length && SKIP_AFTER_WRAPPER.has(tokens[i])) i++;
-    if (i < tokens.length) { word = base(tokens[i]); i++; }
+  // Unwrap runner wrappers, including nested ones (`pnpm exec npx vitest`): skip their
+  // subcommands, flags, and value options until the real tool word.
+  while (runnerWrappers.includes(word)) {
+    const values = WRAPPER_VALUE_OPTS[word] ?? [];
+    while (i < tokens.length) {
+      const t = tokens[i];
+      if (values.includes(t)) { i += 2; continue; }
+      if (SKIP_AFTER_WRAPPER.has(t) || (t.startsWith('-') && t.length > 1)) { i++; continue; }
+      break;
+    }
+    if (i >= tokens.length) break;   // `npm run` with nothing after: keep the wrapper as the word
+    word = base(tokens[i]);
+    i++;
   }
   return { word, args: tokens.slice(i) };
 }

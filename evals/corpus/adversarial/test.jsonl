@@ -3,7 +3,7 @@
 {"id":"ts-f1ee0e","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"pnpm exec vitest run src/a.test.ts"},"source":"adversarial","expected":{"kind":"pass"},"note":"wrapper pnpm exec"}
 {"id":"ts-aea2af","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"npm test -- src/a.test.ts"},"source":"adversarial","expected":{"kind":"pass"},"note":"npm test resolves to the builtin-safe word test"}
 {"id":"ts-c6754e","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"npm run lint:fix src/a.test.ts"},"source":"adversarial","expected":{"kind":"ask","guard":"test"},"note":"unknown script word"}
-{"id":"ts-10ad81","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"yarn workspace app vitest run src/a.test.ts"},"source":"adversarial","expected":{"kind":"pass","known_gap":true},"note":"wrapper flags (deferred T1)"}
+{"id":"ts-10ad81","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"yarn workspace app vitest run src/a.test.ts"},"source":"adversarial","expected":{"kind":"pass"},"note":"yarn workspace <name> is unwrapped"}
 {"id":"ts-fc25d1","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"cat > src/a.test.ts <<'EOF'\nx\nEOF"},"source":"adversarial","expected":{"kind":"ask","guard":"test"},"note":"heredoc redirect"}
 {"id":"ts-0536ed","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"echo x>src/a.test.ts"},"source":"adversarial","expected":{"kind":"ask","guard":"test"},"note":"attached redirect"}
 {"id":"ts-0133a7","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"echo \"a > b.test.ts\""},"source":"adversarial","expected":{"kind":"pass"},"note":"quoted >"}
@@ -34,3 +34,7 @@
 {"id":"ts-41152b","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"sed -n '1,5p' src/a.test.ts"},"source":"adversarial","expected":{"kind":"pass"},"note":"read-only sed"}
 {"id":"ts-76c46a","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"sed -i.bak 's/a/b/' src/a.test.ts"},"source":"adversarial","expected":{"kind":"ask","guard":"test"},"note":"sed -i with an attached suffix"}
 {"id":"ts-f09524","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"sed --in-place 's/a/b/' src/a.test.ts"},"source":"adversarial","expected":{"kind":"ask","guard":"test"},"note":"sed long in-place flag"}
+{"id":"ts-b4bead","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"pnpm -C packages/app exec vitest run src/a.test.ts"},"source":"adversarial","expected":{"kind":"pass"},"note":"pnpm -C value option before exec"}
+{"id":"ts-0a0f71","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"pnpm --filter app exec vitest run src/a.test.ts"},"source":"adversarial","expected":{"kind":"pass"},"note":"pnpm --filter value option"}
+{"id":"ts-537b6d","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"npm --prefix packages/app run lint:fix src/a.test.ts"},"source":"adversarial","expected":{"kind":"ask","guard":"test"},"note":"npm --prefix then an unknown script"}
+{"id":"ts-3e21ce","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"pnpm exec npx vitest run src/a.test.ts"},"source":"adversarial","expected":{"kind":"pass"},"note":"nested wrappers"}
