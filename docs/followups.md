@@ -9,8 +9,6 @@ Nothing open. The marketplace install was verified on 2026-09-18: `claude plugin
 ## Tier 2: wrong behaviour that fails safe or over-asks
 
 - **`init` renders CI check steps and the allow list from the preset only.** A hand-written `custom` config needs its CI steps added by hand (this repo did). Fix: render from `harness.json` when it exists, or add a `sync-ci` subcommand.
-- **Wrapper flags and nested wrappers.** `yarn workspace app vitest …`, `pnpm -C dir exec …`, `npm --prefix x run …` resolve to the wrong tool word and over-ask.
-- **Commit guard crashes on `-F <directory>`.** `fs.readFileSync` throws EISDIR; the dispatcher turns it into an `ask`, so it fails safe. Found by the eval runner's crash detection. Fix: wrap the read in try/catch and return `null`.
 - **`deepMergeSettings` never removes entries.** A plugin upgrade that changes a harness-owned hook command would leave both entries. Needs an ownership marker before it matters.
 
 ## Tier 3: eval-suite coverage and privacy

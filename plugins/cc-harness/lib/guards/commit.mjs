@@ -18,8 +18,8 @@ export function evaluate({ input, config, projectDir }) {
     const { sub } = gitSubcommand(tw.args);
     if (sub !== 'commit') continue;
     const message = extractCommitMessage(command, seg, tokens, (f) => {
-      const abs = path.resolve(projectDir, f);
-      return fs.existsSync(abs) ? fs.readFileSync(abs, 'utf8') : null;
+      // Missing file, directory (EISDIR), or unreadable: nothing to check; git will reject it.
+      try { return fs.readFileSync(path.resolve(projectDir, f), 'utf8'); } catch { return null; }
     });
     if (message === null) continue;
     const regexPath = path.resolve(projectDir, regexFile);

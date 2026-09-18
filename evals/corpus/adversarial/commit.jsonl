@@ -31,3 +31,4 @@
 {"id":"ts-6e7b82","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git commit -F - <<'EOF'\r\nbad message\r\nEOF\r\n"},"source":"adversarial","expected":{"kind":"deny","guard":"commit"},"note":"CRLF heredoc rejected"}
 {"id":"ts-a62e35","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git commit -m \"feat: ok\" -m \"CO-AUTHORED-BY: X <x@y>\""},"source":"adversarial","expected":{"kind":"deny","guard":"commit"},"note":"trailer upper-case"}
 {"id":"ts-4ae550","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"bash -c 'git commit -m \"bad message\"'"},"source":"adversarial","expected":{"kind":"deny","guard":"commit"},"note":"shell wrapper hides the commit"}
+{"id":"ts-b2683e","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git commit -F msgs"},"fixture":{"exists":["msgs/.keep"]},"source":"adversarial","expected":{"kind":"pass"},"note":"-F names a directory: unreadable, so nothing to check"}
