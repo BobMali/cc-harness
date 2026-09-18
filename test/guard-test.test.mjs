@@ -67,3 +67,17 @@ test('no test globs configured → never asks', () => {
     assert.equal(evaluate(c), null);
   } finally { p.cleanup(); }
 });
+
+test('paths outside the project and ignored paths are out of scope in both arms', () => {
+  const p = makeProject({ files: { 'x.test.ts': '', 'node_modules/pkg/a.test.js': '' } });
+  const bash = (command) => evaluate(ctx(p, 'Bash', { command }));
+  try {
+    assert.equal(evaluate(ctx(p, 'Edit', { file_path: path.join(p.dir, '..', 'outside.test.ts') })), null);
+    assert.equal(evaluate(ctx(p, 'Edit', { file_path: path.join(p.dir, 'node_modules/pkg/a.test.js') })), null);
+    assert.equal(bash('rm ../outside.test.ts'), null);
+    assert.equal(bash('echo x > ../outside.test.ts'), null);
+    assert.equal(bash('rm node_modules/pkg/a.test.js'), null);
+    assert.equal(bash('rm ../outside.test.ts && rm x.test.ts')?.kind, 'ask');
+    assert.equal(bash('echo x > x.test.ts')?.kind, 'ask');
+  } finally { p.cleanup(); }
+});

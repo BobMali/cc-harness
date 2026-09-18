@@ -5,4 +5,5 @@
 {"id":"ts-668266","lang":"ts","event":"PostToolUse","tool":"Edit","input":{"file_path":"README.md"},"fixture":{"exists":["README.md"]},"source":"adversarial","expected":{"kind":"pass"},"note":"non-source"}
 {"id":"ts-4bd4d3","lang":"ts","event":"PostToolUse","tool":"Edit","input":{"file_path":"node_modules/x/a.ts"},"fixture":{"exists":["node_modules/x/a.ts"]},"source":"adversarial","expected":{"kind":"pass"},"note":"ignored path"}
 {"id":"ts-1d0f67","lang":"ts","event":"PostToolUse","tool":"Edit","input":{"file_path":"dist/a.js"},"fixture":{"exists":["dist/a.js"]},"source":"adversarial","expected":{"kind":"pass"},"note":"ignored build dir"}
-{"id":"ts-c53543","lang":"ts","event":"PostToolUse","tool":"Edit","input":{"file_path":"../outside.ts"},"source":"adversarial","expected":{"kind":"pass","known_gap":true},"note":"path outside project still arms (deferred T4)"}
+{"id":"ts-c53543","lang":"ts","event":"PostToolUse","tool":"Edit","input":{"file_path":"../outside.ts"},"source":"adversarial","expected":{"kind":"pass"},"note":"path outside the project is out of scope"}
+{"id":"ts-117abf","lang":"ts","event":"PostToolUse","tool":"Write","input":{"file_path":"/etc/outside.ts"},"source":"adversarial","expected":{"kind":"pass"},"note":"absolute path outside the project"}

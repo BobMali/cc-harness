@@ -12,7 +12,7 @@
 {"id":"ts-f7e201","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git -C . diff src/a.test.ts"},"source":"adversarial","expected":{"kind":"pass"},"note":"git global + safe sub"}
 {"id":"ts-0ca366","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git -C . checkout src/a.test.ts"},"source":"adversarial","expected":{"kind":"ask","guard":"test"},"note":"git global + unsafe sub"}
 {"id":"ts-1f165d","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git add src/a.test.ts && git commit -m \"test: add case\""},"source":"adversarial","expected":{"kind":"pass"},"note":"git add/commit safe"}
-{"id":"ts-5a578f","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"rm node_modules/pkg/a.test.js"},"source":"adversarial","expected":{"kind":"pass","known_gap":true},"note":"ignoreGlobs on Bash arm (deferred T2)"}
+{"id":"ts-5a578f","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"rm node_modules/pkg/a.test.js"},"source":"adversarial","expected":{"kind":"pass"},"note":"ignoreGlobs apply to the Bash arm"}
 {"id":"ts-e20565","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"touch src/new.test.ts"},"source":"adversarial","expected":{"kind":"ask","guard":"test"},"note":"new test via Bash (plan's reading)"}
 {"id":"ts-e8d782","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"cat src/a.test.ts | grep foo"},"source":"adversarial","expected":{"kind":"pass"},"note":"read-only pipe"}
 {"id":"ts-6e1f9e","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"mv src/a.test.ts src/b.test.ts"},"source":"adversarial","expected":{"kind":"ask","guard":"test"},"note":"rename"}
@@ -28,4 +28,6 @@
 {"id":"ts-d1b970","lang":"ts","event":"PreToolUse","tool":"MultiEdit","input":{"file_path":"src/a.test.ts"},"fixture":{"exists":["src/a.test.ts"]},"source":"adversarial","expected":{"kind":"ask","guard":"test"},"note":"MultiEdit existing"}
 {"id":"ts-7b4ff7","lang":"ts","event":"PreToolUse","tool":"Edit","input":{"file_path":"node_modules/x/a.test.ts"},"fixture":{"exists":["node_modules/x/a.test.ts"]},"source":"adversarial","expected":{"kind":"pass"},"note":"ignored path"}
 {"id":"ts-40dff0","lang":"ts","event":"PreToolUse","tool":"Edit","input":{"file_path":"src/a.ts"},"fixture":{"exists":["src/a.ts"]},"source":"adversarial","expected":{"kind":"pass"},"note":"source file"}
-{"id":"ts-2b3b4c","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"rm ../outside.test.ts"},"source":"adversarial","expected":{"kind":"pass","known_gap":true},"note":"path outside the project; deferred T1"}
+{"id":"ts-2b3b4c","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"rm ../outside.test.ts"},"source":"adversarial","expected":{"kind":"pass"},"note":"path outside the project is out of scope"}
+{"id":"ts-141913","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"echo x > ../outside.test.ts"},"source":"adversarial","expected":{"kind":"pass"},"note":"redirect into a path outside the project"}
+{"id":"ts-5c5eff","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"rm ../outside.test.ts && rm src/a.test.ts"},"source":"adversarial","expected":{"kind":"ask","guard":"test"},"note":"in-tree test file after an out-of-tree one"}

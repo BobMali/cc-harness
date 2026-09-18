@@ -56,3 +56,20 @@ test('disabled quality gate still marks dirty but runs nothing', () => {
     assert.equal(readMarker(d.dir, 'sess').dirty, true);
   } finally { p.cleanup(); d.cleanup(); }
 });
+
+test('paths outside the project are out of scope: no marker, no checks', () => {
+  const p = makeProject({}); const d = makeDataDir();
+  try {
+    for (const file of ['../outside.ts', '../../x/outside.test.ts']) {
+      const { d: dec, log } = run(p, d, file);
+      assert.equal(dec, null, file);
+      assert.deepEqual(log, [], file);
+    }
+    // run() joins onto the project dir, so the absolute case needs a direct call
+    const log = [];
+    const input = { tool_name: 'Write', tool_input: { file_path: '/etc/outside.ts' }, session_id: 'sess' };
+    assert.equal(evaluate({ event: 'PostToolUse', input, config: mergeConfig(DEFAULTS, base), projectDir: p.dir, dataDir: d.dir, exec: fakeExec(log), fs }), null);
+    assert.deepEqual(log, []);
+    assert.equal(readMarker(d.dir, 'sess'), null);
+  } finally { p.cleanup(); d.cleanup(); }
+});
