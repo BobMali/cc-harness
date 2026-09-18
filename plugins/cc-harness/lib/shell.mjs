@@ -1,5 +1,18 @@
 const ENV_ASSIGN = /^[A-Za-z_][A-Za-z0-9_]*=/;
-const PREFIX_WORDS = new Set(['env', 'sudo', 'time', 'nice', 'command']);
+// Commands that run another command: the real tool word comes after their options.
+// `values` lists options that take the next token as a value; `positional` is how many
+// bare arguments come before the command (timeout's duration).
+const PREFIX_COMMANDS = {
+  env: { values: ['-u', '-C', '-S', '--unset', '--chdir', '--split-string'] },
+  sudo: { values: ['-u', '-g', '-C', '-p', '-r', '-t', '-h', '-U', '--user', '--group'] },
+  time: { values: ['-o', '-f', '--output', '--format'] },
+  nice: { values: ['-n', '--adjustment'] },
+  command: { values: [] },
+  timeout: { values: ['-k', '-s', '--kill-after', '--signal'], positional: 1 },
+  nohup: { values: [] },
+  exec: { values: ['-a'] },
+  xargs: { values: ['-n', '-P', '-I', '-L', '-s', '-d', '-a', '-E', '-i', '--max-args', '--max-procs', '--replace', '--max-lines', '--max-chars', '--delimiter', '--arg-file', '--eof'] },
+};
 const SKIP_AFTER_WRAPPER = new Set(['run', 'run-script', 'exec', 'dlx', 'x', '--', '-y', '--yes', '-s', '--silent', '-q', '--quiet']);
 const GIT_SAFE_SUB = new Set(['status', 'diff', 'log', 'show', 'blame', 'grep', 'ls-files', 'rev-parse', 'branch', 'remote', 'add', 'commit', 'tag', 'describe']);
 
@@ -113,7 +126,20 @@ const base = (t) => t.slice(t.lastIndexOf('/') + 1);
 
 export function resolveTool(tokens, runnerWrappers = []) {
   let i = 0;
-  while (i < tokens.length && (ENV_ASSIGN.test(tokens[i]) || PREFIX_WORDS.has(tokens[i]))) i++;
+  while (i < tokens.length) {
+    if (ENV_ASSIGN.test(tokens[i])) { i++; continue; }
+    const pre = PREFIX_COMMANDS[base(tokens[i])];
+    if (!pre) break;
+    i++;
+    let positional = pre.positional ?? 0;
+    while (i < tokens.length) {
+      const a = tokens[i];
+      if (a === '--') { i++; break; }
+      if (a.startsWith('-') && a.length > 1) { i += pre.values.includes(a) ? 2 : 1; continue; }
+      if (positional > 0) { positional--; i++; continue; }
+      break;
+    }
+  }
   if (i >= tokens.length) return { word: '', args: [] };
   let word = base(tokens[i]);
   i++;
@@ -129,9 +155,11 @@ const SHORT_C = /^-[a-zA-Z]*c[a-zA-Z]*$/;   // -c, -lc, -ec, -xc ...
 const SHORT_O = /^-[a-zA-Z]*[oO]$/;         // -o pipefail, -eo pipefail: the next token is the option's value
 
 // The command string of `sh -c <string>` (also bash/zsh/dash/ksh, combined short flags,
-// `--`, and `sudo`/path prefixes via resolveTool); null when the segment is not one.
+// `--`, and `sudo`/path prefixes via resolveTool) or of `eval <words>`; null when the
+// segment is neither.
 export function shellBody(tokens) {
   const { word, args } = resolveTool(tokens);
+  if (word === 'eval') return args.length ? args.join(' ') : null;
   if (!SHELL_WORDS.has(word)) return null;
   let sawC = false;
   for (let i = 0; i < args.length; i++) {

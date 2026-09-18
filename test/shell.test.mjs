@@ -129,3 +129,15 @@ test('flattenSegments keeps the wrapper segment and appends the segments of its 
   assert.deepEqual(flattenSegments("cd /x && sh -c 'git fetch; git reset --hard'"), ["cd /x", "sh -c 'git fetch; git reset --hard'", 'git fetch', 'git reset --hard']);
   assert.deepEqual(flattenSegments(`bash -c 'sh -c "git reset --hard"'`), [`bash -c 'sh -c "git reset --hard"'`, 'sh -c "git reset --hard"', 'git reset --hard']);
 });
+
+test('resolveTool skips prefix commands and their options: timeout, nohup, xargs, exec, sudo -u, env -i, nice -n', () => {
+  assert.deepEqual(resolveTool(tokenize('timeout 5 git reset --hard')), { word: 'git', args: ['reset', '--hard'] });
+  assert.deepEqual(resolveTool(tokenize('timeout -k 2 --signal=KILL 30s git push -f')), { word: 'git', args: ['push', '-f'] });
+  assert.deepEqual(resolveTool(tokenize('nohup git clean -fd')), { word: 'git', args: ['clean', '-fd'] });
+  assert.deepEqual(resolveTool(tokenize('xargs -n 1 -I {} git branch -D {}')), { word: 'git', args: ['branch', '-D', '{}'] });
+  assert.deepEqual(resolveTool(tokenize('exec git stash clear')), { word: 'git', args: ['stash', 'clear'] });
+  assert.deepEqual(resolveTool(tokenize('sudo -u root -- git clean -fd')), { word: 'git', args: ['clean', '-fd'] });
+  assert.deepEqual(resolveTool(tokenize('/usr/bin/env -i FOO=1 git status')), { word: 'git', args: ['status'] });
+  assert.deepEqual(resolveTool(tokenize('nice -n 10 git status')), { word: 'git', args: ['status'] });
+  assert.deepEqual(resolveTool(tokenize('timeout 5')), { word: '', args: [] });
+});
