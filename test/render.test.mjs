@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { render, deepMergeSettings, buildRegex, templateVars, templatesDir } from '../plugins/cc-harness/lib/render.mjs';
+import { render, deepMergeSettings, pruneSettings, buildRegex, templateVars, templatesDir } from '../plugins/cc-harness/lib/render.mjs';
 import { DEFAULTS, mergeConfig, loadPreset } from '../plugins/cc-harness/lib/config.mjs';
 
 function walkTmpl(dir) {
@@ -128,4 +128,12 @@ test('CI steps come from config.ci, so a custom config can declare setup and ext
   // a config without a ci block renders empty step lists, not placeholders
   const bare = templateVars({ config: mergeConfig(DEFAULTS, { preset: 'custom' }), types: ['feat'], scopes: [], pluginVersion: '0.1.0', projectName: 'd' });
   assert.equal(bare.CI_SETUP_STEPS, ''); assert.equal(bare.CI_EXTRA_STEPS, '');
+});
+
+test('pruneSettings removes exact stale strings from the named arrays and touches nothing else', () => {
+  const existing = { permissions: { allow: ['Bash(old:*)', 'Bash(mine:*)', 'Bash(git status:*)'], ask: ['Bash(rm:*)'], defaultMode: 'plan' }, model: 'x' };
+  const out = pruneSettings(existing, { permissions: { allow: ['Bash(old:*)', 'Bash(never-there:*)'], deny: ['Read(**/.env)'] } });
+  assert.deepEqual(out, { permissions: { allow: ['Bash(mine:*)', 'Bash(git status:*)'], ask: ['Bash(rm:*)'], defaultMode: 'plan' }, model: 'x' });
+  assert.deepEqual(existing.permissions.allow.length, 3);   // input not mutated
+  assert.deepEqual(pruneSettings({ permissions: null }, { permissions: { allow: ['x'] } }), { permissions: null });
 });

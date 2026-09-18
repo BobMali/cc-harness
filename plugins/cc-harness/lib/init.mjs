@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { DEFAULTS, mergeConfig, loadPreset, loadConfig, defaultPresetsDir } from './config.mjs';
-import { render, deepMergeSettings, buildRegex, templateVars, templatesDir, DEFAULT_TYPES } from './render.mjs';
+import { render, deepMergeSettings, pruneSettings, buildRegex, templateVars, templatesDir, DEFAULT_TYPES } from './render.mjs';
 import { parseRegexFile } from './commit-rules.mjs';
 import { RULE_NAMES } from './doctor.mjs';
 import { pluginRoot, pluginVersion } from './meta.mjs';
@@ -10,6 +10,9 @@ import { pluginRoot, pluginVersion } from './meta.mjs';
 const PLUGIN_KEY = 'cc-harness@cc-harness';
 const MARKET = 'cc-harness';
 const LOCAL_SETTINGS = '.claude/settings.local.json';
+// Generated record of the permission entries init last wrote into settings.json, so the next
+// init can retire the ones the current config no longer produces. Committed beside harness.json.
+const OWNED = '.claude/harness.owned.json';
 
 // candidateDir is an override seam for tests: it defaults to the real "am I checked
 // out inside a marketplace" resolution, but this repo dogfoods cc-harness on itself
@@ -118,14 +121,27 @@ export function planInit(opts) {
     : JSON.stringify(harnessJson, null, 2) + '\n';
   writes.push({ rel: '.claude/harness.json', content: harnessJsonContent, action: exists('.claude/harness.json') ? 'overwrite' : 'create' });
 
-  const settingsFragment = { enabledPlugins: { [PLUGIN_KEY]: true }, permissions: permissionFragment(config) };
+  const permissions = permissionFragment(config);
+  const settingsFragment = { enabledPlugins: { [PLUGIN_KEY]: true }, permissions };
+  // Harness-owned entries are the ones the previous init wrote (recorded in OWNED); any of
+  // those the new config no longer produces are retired before merging, so a renamed check
+  // or a dropped write command does not leave its permission behind. Entries the user added
+  // by hand are untouched unless they coincide with a retired harness entry. Without the
+  // record (a project set up before it existed) the previous fragment is derived from the
+  // loaded config, which only helps on a preset switch.
+  let prior = null;
+  try { prior = JSON.parse(fs.readFileSync(path.join(opts.targetDir, OWNED), 'utf8')).permissions ?? null; } catch { prior = null; }
+  if (!prior && loaded.status === 'ok') prior = permissionFragment(loaded.config);
+  const stale = prior ? subtractFragment(prior, permissions) : null;
+  writes.push({ rel: OWNED, content: JSON.stringify({ generatedBy: 'cc-harness init; do not edit', version: 1, permissions }, null, 2) + '\n', action: exists(OWNED) ? 'overwrite' : 'create' });
   const marketIsRepo = isRepo(opts.marketplace);
   const marketPath = marketIsRepo ? null : path.resolve(process.cwd(), opts.marketplace);
   const marketEntry = { [MARKET]: { source: marketIsRepo ? { source: 'github', repo: opts.marketplace } : { source: 'directory', path: marketPath } } };
-  if (marketIsRepo) settingsFragment.extraKnownMarketplaces = marketEntry;
-  writes.push(mergeJsonWrite(opts.targetDir, '.claude/settings.json', settingsFragment));
+  // The marketplace entry is harness-owned too: the requested source replaces an old one.
+  const own = (settings) => (marketIsRepo ? { ...settings, extraKnownMarketplaces: { ...(settings.extraKnownMarketplaces ?? {}), ...marketEntry } } : settings);
+  writes.push(mergeJsonWrite(opts.targetDir, '.claude/settings.json', settingsFragment, { stale: stale ? { permissions: stale } : null, finalize: own }));
   if (!marketIsRepo) {
-    writes.push(mergeJsonWrite(opts.targetDir, LOCAL_SETTINGS, { extraKnownMarketplaces: marketEntry }));
+    writes.push(mergeJsonWrite(opts.targetDir, LOCAL_SETTINGS, {}, { finalize: (settings) => ({ ...settings, extraKnownMarketplaces: { ...(settings.extraKnownMarketplaces ?? {}), ...marketEntry } }) }));
     const gi = exists('.gitignore') ? fs.readFileSync(path.join(opts.targetDir, '.gitignore'), 'utf8') : '';
     if (!gi.split(/\r?\n/).includes(LOCAL_SETTINGS)) writes.push({ rel: '.gitignore', content: (gi && !gi.endsWith('\n') ? gi + '\n' : gi) + LOCAL_SETTINGS + '\n', action: gi ? 'append' : 'create' });
   }
@@ -156,13 +172,21 @@ export function planInit(opts) {
   return { writes, refusals, checklist };
 }
 
-function mergeJsonWrite(targetDir, rel, fragment) {
+// Entries of `prior` (per allow/ask/deny) that `next` no longer contains.
+function subtractFragment(prior, next) {
+  const out = {};
+  for (const k of ['allow', 'ask', 'deny']) out[k] = (prior[k] ?? []).filter((x) => !(next[k] ?? []).includes(x));
+  return out;
+}
+
+function mergeJsonWrite(targetDir, rel, fragment, { stale = null, finalize = (s) => s } = {}) {
   const abs = path.join(targetDir, rel);
   let existing = {};
   if (fs.existsSync(abs)) {
     try { existing = JSON.parse(fs.readFileSync(abs, 'utf8')); } catch (e) { throw new Error(`${rel} is not valid JSON: ${e.message}`); }
   }
-  return { rel, content: JSON.stringify(deepMergeSettings(existing, fragment), null, 2) + '\n', action: fs.existsSync(abs) ? 'merge' : 'create' };
+  const pruned = stale ? pruneSettings(existing, stale) : existing;
+  return { rel, content: JSON.stringify(finalize(deepMergeSettings(pruned, fragment)), null, 2) + '\n', action: fs.existsSync(abs) ? 'merge' : 'create' };
 }
 
 export function applyWrites(targetDir, writes, fsm = fs) {

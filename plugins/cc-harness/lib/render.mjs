@@ -27,6 +27,19 @@ export function deepMergeSettings(existing, fragment) {
   return existing === undefined || existing === null ? fragment : existing;
 }
 
+// Remove exact string entries from arrays at the paths `stale` names (e.g. permission
+// entries an earlier config produced that the current one no longer does). Objects recurse,
+// everything else is left as is; the input is not mutated.
+export function pruneSettings(existing, stale) {
+  if (Array.isArray(existing) && Array.isArray(stale)) return existing.filter((x) => !stale.includes(x));
+  if (isObj(existing) && isObj(stale)) {
+    const out = { ...existing };
+    for (const [k, v] of Object.entries(stale)) if (k in out) out[k] = pruneSettings(out[k], v);
+    return out;
+  }
+  return existing;
+}
+
 export const DEFAULT_TYPES = ['feat', 'fix', 'docs', 'test', 'refactor', 'perf', 'build', 'ci', 'chore', 'revert'];
 
 const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
