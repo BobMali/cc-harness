@@ -33,9 +33,8 @@ A vector for a tool call with a missing `file_path` is unrepresentable in this f
 
 ## Known gaps
 
-Five vectors in the adversarial corpus are currently marked `known_gap: true`:
+Four vectors in the adversarial corpus are currently marked `known_gap: true`:
 
-- `bash -c "git reset --hard"` — a shell wrapper hides the `git` word from the git guard.
 - `../outside.ts` (PostToolUse Edit) — a path outside the project still arms the quality gate.
 - `yarn workspace app vitest run src/a.test.ts` — wrapper flags resolve to the wrong tool word, so the test guard over-asks instead of passing.
 - `rm node_modules/pkg/a.test.js` — the test guard's Bash arm ignores `ignoreGlobs`.

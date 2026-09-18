@@ -38,3 +38,17 @@ test('ordinary git commands pass', () => {
 test('non-Bash tools are ignored', () => {
   assert.equal(evaluate({ event: 'PreToolUse', input: { tool_name: 'Edit', tool_input: {} }, config: DEFAULTS, projectDir: '/p' }), null);
 });
+
+test('destructive git commands inside a sh -c body ask; near misses inside one pass', () => {
+  for (const c of [
+    'bash -c "git reset --hard"', "sh -c 'git push -f'", "bash -lc 'git clean -fd'",
+    `bash -c 'sh -c "git reset --hard"'`, "sudo /bin/bash -c 'git stash clear'",
+  ]) {
+    const d = bash(c);
+    assert.equal(d?.kind, 'ask', `expected ask for: ${c}`);
+    assert.match(d.reason, /cc-harness git guard/);
+  }
+  for (const c of ['bash -c "echo git reset --hard"', "bash -c 'git status'", 'bash script.sh reset --hard']) {
+    assert.equal(bash(c), null, `expected pass for: ${c}`);
+  }
+});

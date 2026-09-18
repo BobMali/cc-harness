@@ -51,3 +51,11 @@ test('missing regex file denies with a pointer', () => {
     assert.match(d.reason, /githooks\/conventional-regex\.txt/);
   } finally { p.cleanup(); }
 });
+
+test('a commit inside a sh -c body is checked too', () => {
+  const p = makeProject({ files });
+  try {
+    assert.equal(run(p, `bash -c 'git commit -m "bad message"'`)?.kind, 'deny');
+    assert.equal(run(p, `sh -c 'git add . && git commit -m "feat: ok"'`), null);
+  } finally { p.cleanup(); }
+});

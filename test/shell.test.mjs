@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { splitSegments, tokenize, resolveTool, redirectTargets, isWrite, isSafe, gitSubcommand } from '../plugins/cc-harness/lib/shell.mjs';
+import { splitSegments, tokenize, resolveTool, redirectTargets, isWrite, isSafe, gitSubcommand, shellBody, flattenSegments } from '../plugins/cc-harness/lib/shell.mjs';
 import { DEFAULTS, mergeConfig } from '../plugins/cc-harness/lib/config.mjs';
 
 const W = ['npx', 'pnpm', 'yarn', 'bunx', 'bun', 'npm'];
@@ -109,4 +109,23 @@ test('gitSubcommand consumes a value for space-form globals, not just the = form
 test('gitSubcommand: a bare --exec-path short-circuits (git prints the path and exits before any subcommand runs), but --exec-path=<path> does not', () => {
   assert.deepEqual(gitSubcommand(['--exec-path', 'reset', '--hard']), { sub: '', rest: [] });
   assert.deepEqual(gitSubcommand(['--exec-path=/x', 'reset', '--hard']), { sub: 'reset', rest: ['--hard'] });
+});
+
+test('shellBody returns the -c string of a shell invocation, else null', () => {
+  assert.equal(shellBody(tokenize('bash -c "git reset --hard"')), 'git reset --hard');
+  assert.equal(shellBody(tokenize("sh -c 'git push -f'")), 'git push -f');
+  assert.equal(shellBody(tokenize("bash -lc 'git clean -fd'")), 'git clean -fd');
+  assert.equal(shellBody(tokenize("bash -eo pipefail -c 'git clean -fd'")), 'git clean -fd');
+  assert.equal(shellBody(tokenize("zsh -c -- 'git clean -fd'")), 'git clean -fd');
+  assert.equal(shellBody(tokenize("sudo /bin/bash -c 'git clean -fd'")), 'git clean -fd');
+  assert.equal(shellBody(tokenize('bash script.sh')), null);
+  assert.equal(shellBody(tokenize('bash -c')), null);
+  assert.equal(shellBody(tokenize('echo -c "git reset --hard"')), null);
+});
+
+test('flattenSegments keeps the wrapper segment and appends the segments of its -c body, recursively', () => {
+  assert.deepEqual(flattenSegments('git status'), ['git status']);
+  assert.deepEqual(flattenSegments('bash -c "git reset --hard"'), ['bash -c "git reset --hard"', 'git reset --hard']);
+  assert.deepEqual(flattenSegments("cd /x && sh -c 'git fetch; git reset --hard'"), ["cd /x", "sh -c 'git fetch; git reset --hard'", 'git fetch', 'git reset --hard']);
+  assert.deepEqual(flattenSegments(`bash -c 'sh -c "git reset --hard"'`), [`bash -c 'sh -c "git reset --hard"'`, 'sh -c "git reset --hard"', 'git reset --hard']);
 });

@@ -34,4 +34,8 @@
 {"id":"ts-da535d","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git switch -f main"},"source":"adversarial","expected":{"kind":"pass"},"note":"near miss: not in spec §3's fixed list"}
 {"id":"ts-385c74","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git checkout src/a.ts"},"source":"adversarial","expected":{"kind":"pass"},"note":"near miss: not in spec §3's fixed list"}
 {"id":"ts-34c2de","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"git restore src/a.ts"},"source":"adversarial","expected":{"kind":"pass"},"note":"near miss: not in spec §3's fixed list"}
-{"id":"ts-6a3343","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"bash -c \"git reset --hard\""},"source":"adversarial","expected":{"kind":"ask","guard":"git","known_gap":true},"note":"shell wrapper hides the git word; deferred, in scope"}
+{"id":"ts-6a3343","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"bash -c \"git reset --hard\""},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"shell wrapper: the -c body is inspected"}
+{"id":"ts-676619","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"sh -c 'git push -f'"},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"sh -c wrapper, single quotes"}
+{"id":"ts-94bd90","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"bash -lc 'git clean -fd'"},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"combined short flags -lc"}
+{"id":"ts-6533ec","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"bash -c 'sh -c \"git reset --hard\"'"},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"nested shell wrappers"}
+{"id":"ts-ab0b32","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"bash -c \"echo git reset --hard\""},"source":"adversarial","expected":{"kind":"pass"},"note":"near miss inside a wrapper body"}
