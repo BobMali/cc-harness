@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { splitSegments, tokenize, resolveTool, gitSubcommand } from '../shell.mjs';
+import { flattenSegments, tokenize, resolveTool, gitSubcommand } from '../shell.mjs';
 import { deny } from '../hook-io.mjs';
 import { parseRegexFile, extractCommitMessage, checkMessage } from '../commit-rules.mjs';
 
@@ -11,7 +11,7 @@ export function evaluate({ input, config, projectDir }) {
   if (input.tool_name !== 'Bash') return null;
   const command = typeof input.tool_input?.command === 'string' ? input.tool_input.command : '';
   const { regexFile, rejectAttributionTrailers } = config.guards.commit;
-  for (const seg of splitSegments(command)) {
+  for (const seg of flattenSegments(command)) {
     const tokens = tokenize(seg);
     const tw = resolveTool(tokens, config.commands.runnerWrappers);
     if (tw.word !== 'git') continue;

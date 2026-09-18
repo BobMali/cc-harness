@@ -1,4 +1,4 @@
-import { splitSegments, tokenize, resolveTool, gitSubcommand } from '../shell.mjs';
+import { flattenSegments, tokenize, resolveTool, gitSubcommand } from '../shell.mjs';
 import { ask } from '../hook-io.mjs';
 
 export const name = 'git';
@@ -22,7 +22,7 @@ const RULES = [
 export function evaluate({ input, config }) {
   if (input.tool_name !== 'Bash') return null;
   const command = typeof input.tool_input?.command === 'string' ? input.tool_input.command : '';
-  for (const seg of splitSegments(command)) {
+  for (const seg of flattenSegments(command)) {
     const tw = resolveTool(tokenize(seg), config.commands.runnerWrappers);
     if (tw.word !== 'git') continue;
     const { sub, rest } = gitSubcommand(tw.args);

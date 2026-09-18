@@ -11,7 +11,7 @@ A POSIX shell at `/bin/sh` (checks run through it); native Windows is not suppor
 | test | before Write/Edit/Bash | prompts before an existing test file is edited, deleted, or rewritten by a command; running tests is free |
 | commit | before Bash | denies `git commit` with an inline message unless the subject matches the regex in `githooks/conventional-regex.txt`; rejects attribution trailers (configurable) |
 | quality | after Write/Edit | runs the fast checks (typecheck, lint, format) and hands the failure back to Claude with "fix this before continuing" |
-| git | before Bash | prompts before `reset --hard`, `checkout .` / `checkout -- <path>`, `restore .`, `clean -f`, `push --force`, `branch -D`, `stash drop`/`stash clear` |
+| git | before Bash | prompts before `reset --hard`, `checkout .` / `checkout -- <path>`, `restore .`, `clean -f`, `push --force`, `branch -D`, `stash drop`/`stash clear`; also inside `sh -c` / `bash -c` bodies |
 | stop | when Claude wants to end a turn | if source or test files changed this session, runs the named checks and refuses to stop while they fail (bounded by `maxBlocks`) |
 | preflight | session start | prints a status block: version, preset, active guards, skipped checks, findings |
 

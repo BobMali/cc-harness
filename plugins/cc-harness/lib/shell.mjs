@@ -124,6 +124,41 @@ export function resolveTool(tokens, runnerWrappers = []) {
   return { word, args: tokens.slice(i) };
 }
 
+const SHELL_WORDS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh']);
+const SHORT_C = /^-[a-zA-Z]*c[a-zA-Z]*$/;   // -c, -lc, -ec, -xc ...
+const SHORT_O = /^-[a-zA-Z]*[oO]$/;         // -o pipefail, -eo pipefail: the next token is the option's value
+
+// The command string of `sh -c <string>` (also bash/zsh/dash/ksh, combined short flags,
+// `--`, and `sudo`/path prefixes via resolveTool); null when the segment is not one.
+export function shellBody(tokens) {
+  const { word, args } = resolveTool(tokens);
+  if (!SHELL_WORDS.has(word)) return null;
+  let sawC = false;
+  for (let i = 0; i < args.length; i++) {
+    const t = args[i];
+    if (t === '--') return sawC ? (args[i + 1] ?? null) : null;
+    if (t.startsWith('-') && t.length > 1) {
+      if (SHORT_C.test(t)) sawC = true;
+      if (SHORT_O.test(t)) i++;
+      continue;
+    }
+    return sawC ? t : null;
+  }
+  return null;
+}
+
+// splitSegments plus, after every `sh -c <string>` segment, the segments of that string
+// (recursively, so nested wrappers unwind too). The wrapper segment itself is kept.
+export function flattenSegments(cmdline) {
+  const out = [];
+  for (const seg of splitSegments(cmdline)) {
+    out.push(seg);
+    const body = shellBody(tokenize(seg));
+    if (body) out.push(...flattenSegments(body));
+  }
+  return out;
+}
+
 export function redirectTargets(segment) {
   const s = String(segment);
   const out = [];

@@ -4,7 +4,6 @@ Open items found during review that were deliberately not fixed in the branch th
 
 ## Guards
 
-- **Shell-wrapped git commands bypass the git guard.** `bash -c "git reset --hard"` (also `sh -c`, `zsh -c`) hides the `git` word from `resolveTool`, so the destructive-git list never applies. Found by the harness final review; kept in scope by the eval plan (adversarial vector `bash -c "git reset --hard"`, `known_gap`). Fix: when the tool word is a shell with `-c`, re-run segment analysis on the quoted argument.
 - **`git push origin :branch` deletes a remote branch unprompted.** Found while building the eval runner fixture. Fix: in the push rule, ask on any refspec starting with `:` and on `--delete`/`-d`.
 - **Commit guard crashes on `-F <directory>`.** `fs.readFileSync` throws EISDIR; the dispatcher turns it into an `ask`, so it fails safe. Found by the eval runner's crash detection. Fix: wrap the read in try/catch and return `null`.
 - **Test guard's Bash arm ignores `ignoreGlobs`.** `rm node_modules/pkg/a.test.js` prompts. Over-asking only. Fix needs token-level path matching instead of `mentionsAny` on the segment text.
