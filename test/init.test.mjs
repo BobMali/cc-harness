@@ -299,3 +299,30 @@ test('syncCi re-renders only the workflow, from harness.json including its ci bl
     assert.match(o.stderr.text(), /harness\.json not found/);
   } finally { p.cleanup(); }
 });
+
+test('re-init retires harness-owned permission entries the new config no longer produces, keeps user entries, and replaces the marketplace source', () => {
+  const p = makeProject({ files: { 'package.json': '{}' } });
+  try {
+    assert.equal(init(base(p.dir, { preset: 'custom' }), io()), 0);
+    const cfg = JSON.parse(p.read('.claude/harness.json'));
+    cfg.checks = [{ name: 'lint', cmd: 'eslint .' }]; cfg.commands.write = [{ cmd: 'prettier', whenFlags: ['--write'] }];
+    p.write('.claude/harness.json', JSON.stringify(cfg));
+    assert.equal(init(base(p.dir, { preset: 'custom', force: true }), io()), 0);
+    let s = JSON.parse(p.read('.claude/settings.json'));
+    assert.ok(s.permissions.allow.includes('Bash(eslint:*)')); assert.ok(s.permissions.ask.includes('Bash(prettier --write:*)'));
+    // user adds an entry of their own and one that coincides with a harness entry, then the config changes
+    s.permissions.allow.push('Bash(mine:*)');
+    p.write('.claude/settings.json', JSON.stringify(s));
+    cfg.checks = [{ name: 'lint', cmd: 'biome check .' }]; cfg.commands.write = [];
+    p.write('.claude/harness.json', JSON.stringify(cfg));
+    assert.equal(init(base(p.dir, { preset: 'custom', force: true, marketplace: 'other/cc-harness' }), io()), 0);
+    s = JSON.parse(p.read('.claude/settings.json'));
+    assert.ok(!s.permissions.allow.includes('Bash(eslint:*)'), 'retired check allow entry removed');
+    assert.ok(!s.permissions.ask.includes('Bash(prettier --write:*)'), 'retired write ask entry removed');
+    assert.ok(s.permissions.allow.includes('Bash(biome:*)'));
+    assert.ok(s.permissions.allow.includes('Bash(mine:*)'), 'user entry kept');
+    assert.ok(s.permissions.ask.includes('Bash(git push:*)'), 'still-current harness entry kept');
+    assert.deepEqual(JSON.parse(p.read('.claude/harness.owned.json')).permissions.allow, s.permissions.allow.filter((x) => x !== 'Bash(mine:*)'), 'the record mirrors what init wrote');
+    assert.deepEqual(s.extraKnownMarketplaces['cc-harness'].source, { source: 'github', repo: 'other/cc-harness' });
+  } finally { p.cleanup(); }
+});
