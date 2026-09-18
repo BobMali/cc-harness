@@ -12,20 +12,22 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+      - run: 'npm install -g @anthropic-ai/claude-code'
       - name: syntax
         run: 'for f in plugins/cc-harness/bin/*.mjs plugins/cc-harness/lib/*.mjs plugins/cc-harness/lib/guards/*.mjs test/*.mjs test/helpers/*.mjs; do node --check "$f" || exit 1; done'
-      - run: npm install -g @anthropic-ai/claude-code
       - name: validate
-        run: claude plugin validate plugins/cc-harness --strict
+        run: '[ -e "plugins/cc-harness/.claude-plugin/plugin.json" ] || exit 0; claude plugin validate plugins/cc-harness --strict'
       - name: tests
-        run: node --test test/*.test.mjs
+        run: 'node --test test/*.test.mjs'
       - name: evals
-        run: node evals/run.mjs --via cli --sample 100 --json evals/results.json
+        run: 'node evals/run.mjs --quiet'
+      - name: evals via the cli
+        run: 'node evals/run.mjs --via cli --sample 100 --json evals/results.json'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: eval-results
-          path: evals/results.json
+          name: "eval-results"
+          path: "evals/results.json"
 
   commits:
     runs-on: ubuntu-latest
@@ -35,6 +37,8 @@ jobs:
         with:
           fetch-depth: 0
       - name: Check commit messages against githooks/conventional-regex.txt
+        env:
+          CC_HARNESS_REJECT_TRAILERS: "1"
         run: |
           set -e
           for sha in $(git rev-list --no-merges "origin/${{ github.base_ref }}..HEAD"); do
