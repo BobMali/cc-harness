@@ -4,7 +4,6 @@ Open items found during review that were deliberately not fixed in the branch th
 
 ## Guards
 
-- **`git push origin :branch` deletes a remote branch unprompted.** Found while building the eval runner fixture. Fix: in the push rule, ask on any refspec starting with `:` and on `--delete`/`-d`.
 - **Commit guard crashes on `-F <directory>`.** `fs.readFileSync` throws EISDIR; the dispatcher turns it into an `ask`, so it fails safe. Found by the eval runner's crash detection. Fix: wrap the read in try/catch and return `null`.
 - **Test guard's Bash arm ignores `ignoreGlobs`.** `rm node_modules/pkg/a.test.js` prompts. Over-asking only. Fix needs token-level path matching instead of `mentionsAny` on the segment text.
 - **Wrapper flags and nested wrappers.** `yarn workspace app vitest …`, `pnpm -C dir exec …`, `npm --prefix x run …` resolve to the wrong tool word and over-ask.

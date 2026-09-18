@@ -12,6 +12,8 @@ const RULES = [
   { when: (s, a) => s === 'restore' && a.includes('.') && !a.includes('--staged'), what: 'overwrites working-tree files with the committed version' },
   { when: (s, a) => s === 'clean' && a.some((t) => t === '--force' || SHORT_F.test(t)), what: 'deletes untracked files' },
   { when: (s, a) => s === 'push' && a.some((t) => t === '--force' || SHORT_F.test(t) || /^\+/.test(t)), what: 'rewrites remote history (use --force-with-lease if a force push is intended)' },
+  // Exact -d only (the uppercase SHORT_D belongs to `branch`); a bare `:` refspec means "matching branches", not delete.
+  { when: (s, a) => s === 'push' && (a.includes('--delete') || a.includes('-d') || a.some((t) => /^:./.test(t))), what: 'deletes a remote branch or tag' },
   {
     when: (s, a) => s === 'branch' && (a.includes('-D') || a.some((t) => SHORT_D.test(t)) || (a.includes('--delete') && (a.includes('--force') || a.includes('-f')))),
     what: 'deletes a branch even if it is unmerged',
