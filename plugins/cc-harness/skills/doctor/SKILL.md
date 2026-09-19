@@ -24,6 +24,7 @@ The command exits 1 only when a finding is an error (✖); warnings (⚠) alone 
 | `core.hooksPath is not "githooks"` | `git config core.hooksPath githooks` |
 | `rules ... missing` or `stamped vX but plugin is vY` | `node "${CLAUDE_PLUGIN_ROOT}/bin/harness.mjs" sync-rules --target "$CLAUDE_PROJECT_DIR"` |
 | `node vN is below 18` | install Node 18 or newer; hooks cannot run otherwise |
+| `no POSIX shell found` | Windows without Git for Windows: install it (its `sh.exe` is found on `PATH` or under Program Files) or use WSL; every check aborts until then |
 | `harness.yml differs from what harness.json renders` | `node "${CLAUDE_PLUGIN_ROOT}/bin/harness.mjs" sync-ci --target "$CLAUDE_PROJECT_DIR"`; a check or the `ci` block changed since the workflow was rendered |
 | `N harness-owned permission entries are missing from settings.json` | re-add the listed entries to `.claude/settings.json`, or run `init --force` to rewrite them; the record lives in `.claude/harness.owned.json` |
 

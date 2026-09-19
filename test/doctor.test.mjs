@@ -85,3 +85,13 @@ test('T3: a stale workflow and owned entries missing from settings are warnings;
     assert.doesNotMatch(texts, /warn .*harness\.yml/);
   } finally { p.cleanup(); }
 });
+
+test('T4: doctor reports the shell, and an error on win32 when no sh.exe can be found', () => {
+  const p = makeProject({ config, marker: 'package.json', files: { 'githooks/conventional-regex.txt': REGEX, 'githooks/commit-msg': '#!/bin/sh\n', ...rules } });
+  try {
+    const here = diagnose({ projectDir: p.dir, loaded: loadConfig(p.dir), exec: gitOk, fs, pluginVersion: '0.1.0', nodeVersion: 'v22.0.0', platform: 'darwin', env: {} });
+    assert.ok(here.findings.some((f) => f.level === 'ok' && f.text === 'shell /bin/sh'));
+    const win = diagnose({ projectDir: p.dir, loaded: loadConfig(p.dir), exec: gitOk, fs, pluginVersion: '0.1.0', nodeVersion: 'v22.0.0', platform: 'win32', env: { PATH: 'C:\\nothing' } });
+    assert.ok(win.findings.some((f) => f.level === 'error' && /no POSIX shell found/.test(f.text)));
+  } finally { p.cleanup(); }
+});
