@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { splitSegments, tokenize, resolveTool, redirectTargets, isWrite, isSafe, gitSubcommand, shellBody, flattenSegments } from '../plugins/cc-harness/lib/shell.mjs';
+import { splitSegments, tokenize, resolveTool, redirectTargets, isWrite, isSafe, gitSubcommand, shellBody, flattenSegments, sedWriteTargets } from '../plugins/cc-harness/lib/shell.mjs';
 import { DEFAULTS, mergeConfig } from '../plugins/cc-harness/lib/config.mjs';
 
 const W = ['npx', 'pnpm', 'yarn', 'bunx', 'bun', 'npm'];
@@ -152,4 +152,11 @@ test('resolveTool skips wrapper flags, value options, yarn workspace, and nested
   assert.deepEqual(resolveTool(tokenize('pnpm exec npx vitest run'), W), { word: 'vitest', args: ['run'] });
   assert.deepEqual(resolveTool(tokenize('yarn --cwd packages/app vitest'), W), { word: 'vitest', args: [] });
   assert.deepEqual(resolveTool(tokenize('npm run'), W), { word: 'npm', args: [] });
+});
+
+test('sedWriteTargets finds the file after a w or W command in sed scripts, ignoring flags', () => {
+  assert.deepEqual(sedWriteTargets(tokenize("sed -n '/x/w out_test.go' src.go").slice(1)), ['out_test.go']);
+  assert.deepEqual(sedWriteTargets(tokenize("sed -e 's/a/b/w changed.txt' -e '/y/W other.txt' in.txt").slice(1)), ['changed.txt', 'other.txt']);
+  assert.deepEqual(sedWriteTargets(tokenize("sed -n '1,5p' x.test.ts").slice(1)), []);
+  assert.deepEqual(sedWriteTargets(tokenize("sed -i '' 's/a/b/' x.test.ts").slice(1)), []);
 });

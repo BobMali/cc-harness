@@ -93,3 +93,13 @@ test('read-only sed on a test file passes; in-place sed asks', () => {
     assert.equal(bash("sed -ni 's/a/b/p' x.test.ts")?.kind, 'ask');
   } finally { p.cleanup(); }
 });
+
+test('a sed w command that writes a test file asks even without -i; writing elsewhere from a test file does not', () => {
+  const p = makeProject({ files: { 'x.test.ts': '', 'src.ts': '' } });
+  const bash = (command) => evaluate(ctx(p, 'Bash', { command }));
+  try {
+    const d = bash("sed -n '/x/w x.test.ts' src.ts");
+    assert.equal(d?.kind, 'ask'); assert.match(d.reason, /writes into the test file x\.test\.ts/);
+    assert.equal(bash("sed -n '/x/w out.txt' x.test.ts"), null);
+  } finally { p.cleanup(); }
+});
