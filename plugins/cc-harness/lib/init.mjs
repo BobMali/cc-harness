@@ -133,13 +133,20 @@ export function planInit(opts) {
   try { prior = JSON.parse(fs.readFileSync(path.join(opts.targetDir, OWNED), 'utf8')).permissions ?? null; } catch { prior = null; }
   if (!prior && loaded.status === 'ok') prior = permissionFragment(loaded.config);
   const stale = prior ? subtractFragment(prior, permissions) : null;
-  writes.push({ rel: OWNED, content: JSON.stringify({ generatedBy: 'cc-harness init; do not edit', version: 1, permissions }, null, 2) + '\n', action: exists(OWNED) ? 'overwrite' : 'create' });
+  // Own only what init adds: an entry the user already had before this init stays theirs
+  // (and survives a later retirement) unless a previous init already owned it.
+  const existingSettings = readJsonIfPresent(opts.targetDir, '.claude/settings.json');
+  const owned = {};
+  for (const k of ['allow', 'ask', 'deny']) {
+    owned[k] = permissions[k].filter((e) => (prior?.[k] ?? []).includes(e) || !(existingSettings.permissions?.[k] ?? []).includes(e));
+  }
+  writes.push({ rel: OWNED, content: JSON.stringify({ generatedBy: 'cc-harness init; do not edit', version: 1, permissions: owned }, null, 2) + '\n', action: exists(OWNED) ? 'overwrite' : 'create' });
   const marketIsRepo = isRepo(opts.marketplace);
   const marketPath = marketIsRepo ? null : path.resolve(process.cwd(), opts.marketplace);
   const marketEntry = { [MARKET]: { source: marketIsRepo ? { source: 'github', repo: opts.marketplace } : { source: 'directory', path: marketPath } } };
   // The marketplace entry is harness-owned too: the requested source replaces an old one.
   const own = (settings) => (marketIsRepo ? { ...settings, extraKnownMarketplaces: { ...(settings.extraKnownMarketplaces ?? {}), ...marketEntry } } : settings);
-  writes.push(mergeJsonWrite(opts.targetDir, '.claude/settings.json', settingsFragment, { stale: stale ? { permissions: stale } : null, finalize: own }));
+  writes.push(mergeJsonWrite(opts.targetDir, '.claude/settings.json', settingsFragment, { stale: stale ? { permissions: stale } : null, finalize: own, existing: existingSettings }));
   if (!marketIsRepo) {
     writes.push(mergeJsonWrite(opts.targetDir, LOCAL_SETTINGS, {}, { finalize: (settings) => ({ ...settings, extraKnownMarketplaces: { ...(settings.extraKnownMarketplaces ?? {}), ...marketEntry } }) }));
     const gi = exists('.gitignore') ? fs.readFileSync(path.join(opts.targetDir, '.gitignore'), 'utf8') : '';
@@ -179,12 +186,15 @@ function subtractFragment(prior, next) {
   return out;
 }
 
-function mergeJsonWrite(targetDir, rel, fragment, { stale = null, finalize = (s) => s } = {}) {
+function readJsonIfPresent(targetDir, rel) {
   const abs = path.join(targetDir, rel);
-  let existing = {};
-  if (fs.existsSync(abs)) {
-    try { existing = JSON.parse(fs.readFileSync(abs, 'utf8')); } catch (e) { throw new Error(`${rel} is not valid JSON: ${e.message}`); }
-  }
+  if (!fs.existsSync(abs)) return {};
+  try { return JSON.parse(fs.readFileSync(abs, 'utf8')); } catch (e) { throw new Error(`${rel} is not valid JSON: ${e.message}`); }
+}
+
+function mergeJsonWrite(targetDir, rel, fragment, { stale = null, finalize = (s) => s, existing = null } = {}) {
+  const abs = path.join(targetDir, rel);
+  if (existing === null) existing = readJsonIfPresent(targetDir, rel);
   const pruned = stale ? pruneSettings(existing, stale) : existing;
   return { rel, content: JSON.stringify(finalize(deepMergeSettings(pruned, fragment)), null, 2) + '\n', action: fs.existsSync(abs) ? 'merge' : 'create' };
 }

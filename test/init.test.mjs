@@ -326,3 +326,21 @@ test('re-init retires harness-owned permission entries the new config no longer 
     assert.deepEqual(s.extraKnownMarketplaces['cc-harness'].source, { source: 'github', repo: 'other/cc-harness' });
   } finally { p.cleanup(); }
 });
+
+test('T4: entries already in settings before init are not owned, so a later retirement keeps them', () => {
+  const p = makeProject({ files: { 'package.json': '{}', '.claude/settings.json': JSON.stringify({ permissions: { allow: ['Bash(eslint:*)'] } }) } });
+  try {
+    assert.equal(init(base(p.dir, { preset: 'custom' }), io()), 0);
+    const cfg = JSON.parse(p.read('.claude/harness.json'));
+    cfg.checks = [{ name: 'lint', cmd: 'eslint .' }];
+    p.write('.claude/harness.json', JSON.stringify(cfg));
+    assert.equal(init(base(p.dir, { preset: 'custom', force: true }), io()), 0);
+    assert.ok(!JSON.parse(p.read('.claude/harness.owned.json')).permissions.allow.includes('Bash(eslint:*)'), 'a pre-existing entry is not claimed');
+    cfg.checks = [{ name: 'lint', cmd: 'biome check .' }];
+    p.write('.claude/harness.json', JSON.stringify(cfg));
+    assert.equal(init(base(p.dir, { preset: 'custom', force: true }), io()), 0);
+    const s = JSON.parse(p.read('.claude/settings.json'));
+    assert.ok(s.permissions.allow.includes('Bash(eslint:*)'), 'the user entry survives the retirement');
+    assert.ok(s.permissions.allow.includes('Bash(biome:*)'));
+  } finally { p.cleanup(); }
+});
