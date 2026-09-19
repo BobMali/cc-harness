@@ -227,7 +227,8 @@ export function flattenSegments(cmdline, vars = new Map()) {
   return out;
 }
 
-export function redirectTargets(segment) {
+// Every output redirection in a segment: its target and whether it appends (>>) or truncates (>).
+export function redirections(segment) {
   const s = String(segment);
   const out = [];
   let q = null;
@@ -244,7 +245,8 @@ export function redirectTargets(segment) {
     if (c === '>') {
       const prev = s[i - 1];
       let j = i + 1;
-      if (s[j] === '>') j++;
+      const append = s[j] === '>';
+      if (append) j++;
       const next = s[j];
       if (prev !== '&' && next !== '&') {
         let k = j;
@@ -257,7 +259,7 @@ export function redirectTargets(segment) {
         } else {
           while (k < s.length && !/[\s&|;<>]/.test(s[k])) { target += s[k]; k++; }
         }
-        if (target) out.push(target);
+        if (target) out.push({ target, append });
         i = k;
         continue;
       }
@@ -267,6 +269,10 @@ export function redirectTargets(segment) {
     i++;
   }
   return out;
+}
+
+export function redirectTargets(segment) {
+  return redirections(segment).map((r) => r.target);
 }
 
 function entrySaysWrite(tokens, w) {

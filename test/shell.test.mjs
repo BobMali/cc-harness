@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { splitSegments, tokenize, resolveTool, redirectTargets, isWrite, isSafe, gitSubcommand, shellBody, flattenSegments, sedWriteTargets } from '../plugins/cc-harness/lib/shell.mjs';
+import { splitSegments, tokenize, resolveTool, redirectTargets, isWrite, isSafe, gitSubcommand, shellBody, flattenSegments, sedWriteTargets, redirections } from '../plugins/cc-harness/lib/shell.mjs';
 import { DEFAULTS, mergeConfig } from '../plugins/cc-harness/lib/config.mjs';
 
 const W = ['npx', 'pnpm', 'yarn', 'bunx', 'bun', 'npm'];
@@ -171,4 +171,11 @@ test('flattenSegments resolves same-command variable assignments and which-subst
   assert.deepEqual(flattenSegments('$TMPDIR/x reset --hard'), ['$TMPDIR/x reset --hard']); // unknown variables stay opaque
   assert.deepEqual(flattenSegments('G="git reset --hard"; $G'), ['G="git reset --hard"', 'git reset --hard']);   // quoted values may hold spaces
   assert.deepEqual(flattenSegments('G=git; G=ls; $G -la'), ['G=git', 'G=ls', 'ls -la']);  // last assignment wins
+});
+
+test('redirections reports each target with whether it appends; redirectTargets stays the plain list', () => {
+  assert.deepEqual(redirections('echo a >> x.test.ts'), [{ target: 'x.test.ts', append: true }]);
+  assert.deepEqual(redirections('echo b > y.ts 2>&1'), [{ target: 'y.ts', append: false }]);
+  assert.deepEqual(redirections("cat >>'z z.ts' <<'EOF'"), [{ target: 'z z.ts', append: true }]);
+  assert.deepEqual(redirectTargets('echo a >> x.test.ts'), ['x.test.ts']);
 });

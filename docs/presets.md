@@ -44,6 +44,8 @@ Ordered, named commands run via `/bin/sh -c` with the project root as cwd.
 
 ## guards
 
+`guards.test.allowAppend` (default `true`) lets an edit that only adds text after the end of an existing test file pass without a prompt: a Write whose content starts with the current content, an Edit or MultiEdit whose `old_string` is the file's tail and whose `new_string` starts with it, or a `>>` redirect. Set it to `false` to prompt on every edit to an existing test file.
+
 Each guard has `enabled`. Extra keys: `commit.regexFile`, `commit.rejectAttributionTrailers`, `quality.scope` (`fast` or `all`), `stop.checks` (names), `stop.maxBlocks` (0–7).
 
 `commit.rejectAttributionTrailers` only controls the Claude commit guard. The generated `harness-commits.md` rule is a static file rendered once, at `init`/`sync-rules` time, from whatever the config said then — changing this key does not update it; run `harness sync-rules` afterward to regenerate it, or the rule keeps telling Claude to reject trailers regardless of the new setting (`doctor` won't flag the mismatch either — it only checks the rule's version stamp, not its content). The git `commit-msg` hook and CI enforce the trailer check independently, reading the `CC_HARNESS_REJECT_TRAILERS` environment variable (default `1`, i.e. reject); set `CC_HARNESS_REJECT_TRAILERS=0` in the hook's environment to keep the two in sync when you disable the config key.
