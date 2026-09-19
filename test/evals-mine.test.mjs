@@ -458,3 +458,23 @@ test('shape: edit results are classified as append, insert, or replace from the 
     assert.equal(r.upgraded, 1);   // the stale PreToolUse row; a twin would count as another row
   } finally { proj.cleanup(); from.cleanup(); out.cleanup(); }
 });
+
+test('shape: a whole test block inserted between blocks is insert-block; it supersedes a plain insert row for the same edit', () => {
+  const proj = makeProject({ files: { 'package.json': '{}' } });
+  const from = makeDataDir(); const out = makeDataDir();
+  try {
+    const dir = path.join(from.dir, '-x-app'); fs.mkdirSync(dir);
+    const fp = path.join(proj.dir, 'src/a.test.ts');
+    const orig = 'test("a", () => {});\n\ntest("z", () => {});\n';
+    const call = (id, input) => JSON.stringify({ type: 'assistant', cwd: proj.dir, timestamp: '2026-08-01T00:00:00Z', message: { content: [{ type: 'tool_use', id, name: 'Edit', input }] } });
+    const result = (id, r) => JSON.stringify({ type: 'user', cwd: proj.dir, timestamp: '2026-08-01T00:00:01Z', message: { content: [{ type: 'tool_result', tool_use_id: id, content: 'ok' }] }, toolUseResult: r });
+    const edit = { oldString: 'test("a", () => {});', newString: 'test("a", () => {});\n\ntest("m", () => {});', originalFile: orig, replaceAll: false, filePath: fp };
+    fs.writeFileSync(path.join(dir, 's.jsonl'), [call('t1', { file_path: fp, old_string: edit.oldString, new_string: edit.newString }), result('t1', edit)].join('\n') + '\n');
+    const stale = { id: vectorId('ts', 'PreToolUse', 'Edit', { file_path: 'src/a.test.ts', shape: 'insert' }, true), lang: 'ts', event: 'PreToolUse', tool: 'Edit', input: { file_path: 'src/a.test.ts', shape: 'insert' }, fixture: { exists: ['src/a.test.ts'] }, expected: { kind: 'ask', guard: 'test' }, source: 'mined', note: 'app 2026-07' };
+    fs.writeFileSync(path.join(out.dir, 'ts.jsonl'), JSON.stringify(stale) + '\n');
+    const r = mine({ from: from.dir, out: out.dir, log: () => {} });
+    const rows = readJsonl(path.join(out.dir, 'ts.jsonl')).filter((v) => v.event === 'PreToolUse');
+    assert.deepEqual(rows.map((v) => v.input.shape), ['insert-block']);
+    assert.equal(r.upgraded, 1);
+  } finally { proj.cleanup(); from.cleanup(); out.cleanup(); }
+});

@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { readJsonl, writeJsonl, vectorId, TOOLS } from './lib/corpus.mjs';
 import { redact } from './lib/redact.mjs';
+import { isBlockInsertion } from '../plugins/cc-harness/lib/test-edits.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_FROM = path.join(os.homedir(), '.claude', 'projects');
@@ -104,7 +105,8 @@ export function editShape(use, result) {
   const old = result.oldString; const neu = result.newString;
   if (typeof old !== 'string' || typeof neu !== 'string') return undefined;
   if (result.replaceAll || !neu.includes(old)) return 'replace';
-  return old.trim() && neu.startsWith(old) && orig.trimEnd().endsWith(old.trimEnd()) ? 'append' : 'insert';
+  if (old.trim() && neu.startsWith(old) && orig.trimEnd().endsWith(old.trimEnd())) return 'append';
+  return isBlockInsertion(result.filePath ?? use.input.file_path, orig, [{ old_string: old, new_string: neu }]) ? 'insert-block' : 'insert';
 }
 
 export function toVector(use, { cwd, lang, touched, month, project, words = [], result }) {
@@ -300,9 +302,17 @@ export function mine(opts = {}) {
     const file = path.join(out, `${lang}.jsonl`);
     let existing = fsm.existsSync(file) ? readJsonl(file) : [];
     // A shaped vector supersedes a shapeless row for the same edit (mined before shapes existed).
-    const shapedKeys = new Set(fresh.filter((v) => v.input.shape).map((v) => `${v.event}|${v.tool}|${v.input.file_path}|${Boolean(v.fixture)}`));
+    const keyOf = (v) => `${v.event}|${v.tool}|${v.input.file_path}|${Boolean(v.fixture)}`;
+    const freshShapes = new Map();
+    for (const v of fresh) if (v.input.shape) { const k = keyOf(v); if (!freshShapes.has(k)) freshShapes.set(k, new Set()); freshShapes.get(k).add(v.input.shape); }
     const before = existing.length;
-    existing = existing.filter((v) => v.tool === 'Bash' || v.input.shape || !shapedKeys.has(`${v.event}|${v.tool}|${v.input.file_path}|${Boolean(v.fixture)}`));
+    existing = existing.filter((v) => {
+      if (v.tool === 'Bash') return true;
+      const shapes = freshShapes.get(keyOf(v));
+      if (!shapes) return true;
+      if (!v.input.shape) return false;                                                            // shapeless row superseded by a shaped one
+      return !(v.input.shape === 'insert' && shapes.has('insert-block') && !shapes.has('insert'));  // plain insert refined to insert-block
+    });
     upgraded += before - existing.length;
     const ids = new Set(existing.map((v) => v.id));
     const appended = fresh.filter((v) => !ids.has(v.id));
@@ -312,7 +322,7 @@ export function mine(opts = {}) {
     all.push(...existing, ...appended);
   }
   const longest = [...all].sort((a, b) => JSON.stringify(b.input).length - JSON.stringify(a.input).length).slice(0, LONGEST);
-  log(`mined ${added} new vector(s): ${Object.entries(byLang).map(([l, n]) => `${l}=${n}`).join(' ') || 'none'}; upgraded ${upgraded} shapeless row(s); dropped secret=${dropped.secret} sensitive-path=${dropped['sensitive-path']} escaping-path=${dropped['escaping-path']} personal=${dropped.personal} shadowed=${dropped.shadowed}`);
+  log(`mined ${added} new vector(s): ${Object.entries(byLang).map(([l, n]) => `${l}=${n}`).join(' ') || 'none'}; superseded ${upgraded} row(s) by shaped ones; dropped secret=${dropped.secret} sensitive-path=${dropped['sensitive-path']} escaping-path=${dropped['escaping-path']} personal=${dropped.personal} shadowed=${dropped.shadowed}`);
   log(`${longest.length} longest vectors (review before committing):`);
   for (const v of longest) log(`  ${v.id}  ${v.tool}  ${JSON.stringify(v.input.command ?? v.input.file_path).slice(0, 160)}`);
   return { added, byLang, dropped, longest, paired, upgraded };
