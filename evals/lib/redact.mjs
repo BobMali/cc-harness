@@ -38,6 +38,7 @@ export function redact(text, { cwd, words = [] } = {}) {
   let t = String(text);
   const c = cwd ? cwd.replace(/\/+$/, '') : '';
   if (c.length >= 2) t = t.replace(new RegExp(`${escapeRe(c)}(?=/|\\s|["':;,]|$)`, 'g'), '.');
+  t = t.replace(/[A-Za-z]:[\\/]Users[\\/][^\\/\s"':;]+/g, '~');   // before the Unix rule, which would otherwise eat the tail of C:/Users/name; C:\Users\name and C:/Users/name
   t = t.replace(/\/Users\/[^/\s"':;]+/g, '~').replace(/\/home\/[^/\s"':;]+/g, '~');
   t = t.replace(/-(Users|home)-[^-/\s"']+(?=-|\/|\s|["']|$)/g, '-$1-~');
   t = t.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '00000000-0000-4000-8000-000000000000');
