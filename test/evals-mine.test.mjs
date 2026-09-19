@@ -40,9 +40,11 @@ test('mine: lang tag, fixture derivation, redaction, dedupe, merge with existing
     const r = mine({ from: from.dir, out: out.dir, log: (s) => log.push(s) });
     const rows = readJsonl(path.join(out.dir, 'ts.jsonl'));
     const cmds = rows.map((v) => v.input.command ?? v.input.file_path);
-    assert.deepEqual(cmds, ['npx vitest run src/a.test.ts', 'src/new.ts', 'src/new.ts', 'src/new.ts', '~/private/notes.ts', '/Volumes/Other/drive/y.ts']);
-    assert.equal(rows.filter((v) => v.tool === 'Write').length, 2);
-    const [w1, e1, w2, e2, e3] = rows.filter((v) => v.tool !== 'Bash');
+    // every edit-tool use yields a PreToolUse row and a PostToolUse twin; the checks below look at the PreToolUse rows
+    assert.deepEqual(cmds.filter((_, i) => rows[i].event === 'PreToolUse'), ['npx vitest run src/a.test.ts', 'src/new.ts', 'src/new.ts', 'src/new.ts', '~/private/notes.ts', '/Volumes/Other/drive/y.ts']);
+    assert.equal(rows.filter((v) => v.tool === 'Write').length, 4);
+    assert.equal(rows.filter((v) => v.event === 'PostToolUse').length, 5);
+    const [w1, e1, w2, e2, e3] = rows.filter((v) => v.tool !== 'Bash' && v.event === 'PreToolUse');
     assert.equal(w1.fixture, undefined);                       // first Write: file did not exist
     assert.deepEqual(e1.fixture, { exists: ['src/new.ts'] }); // Edit implies existed
     assert.deepEqual(w2.fixture, { exists: ['src/new.ts'] }); // later Write: touched earlier
@@ -55,8 +57,8 @@ test('mine: lang tag, fixture derivation, redaction, dedupe, merge with existing
     assert.ok(rows.every((v) => v.note === `${path.basename(proj.dir)} 2026-08`));
     assert.equal(rows[0].id, vectorId('ts', 'PreToolUse', 'Bash', { command: 'npx vitest run src/a.test.ts' }));
     assert.deepEqual(r.dropped, { secret: 1, 'sensitive-path': 1, 'escaping-path': 0, personal: 0, shadowed: 0, rebuilt: 0 });
-    assert.equal(r.added, 6);
-    assert.deepEqual(r.byLang, { ts: 6 });
+    assert.equal(r.added, 11);
+    assert.deepEqual(r.byLang, { ts: 11 });
     assert.ok(log.some((s) => /longest/i.test(s)));
 
     // second run: nothing new, existing expectations preserved
@@ -177,7 +179,7 @@ test('F2: a relative file_path that escapes upward is dropped as escaping-path; 
       [mk('../../etc/passwd'), mk('src/../a.ts')].map((r) => JSON.stringify(r)).join('\n') + '\n',
     );
     const r = mine({ from: from.dir, out: out.dir, log: () => {} });
-    const rows = readJsonl(path.join(out.dir, 'ts.jsonl'));
+    const rows = readJsonl(path.join(out.dir, 'ts.jsonl')).filter((v) => v.event === 'PreToolUse');   // the PostToolUse twin mirrors the kept row
     assert.equal(rows.length, 1);
     assert.equal(rows[0].input.file_path, 'a.ts');
     assert.equal(r.dropped['escaping-path'], 1);
@@ -324,10 +326,11 @@ test('item 1: --rebuild re-redacts fixture.exists entries, not just the payload'
     mine({ from: from.dir, out: out.dir, rebuild: true, log: (s) => log.push(s) });
 
     const rows = readJsonl(path.join(out.dir, 'ts.jsonl'));
-    assert.equal(rows.length, 1);
+    assert.equal(rows.length, 2);   // the rewritten row plus its back-filled PostToolUse twin
     assert.deepEqual(rows[0].fixture, { exists: ['-Users-~/x.ts'] });
     assert.deepEqual(rows[0].expected, { kind: 'pass' });
     assert.equal(rows[0].id, id);   // the id hashes only the fixture flag, not its content
+    assert.deepEqual(rows[1].fixture, rows[0].fixture); assert.equal(rows[1].event, 'PostToolUse');   // the twin carries the re-redacted fixture
     assert.ok(log.some((s) => /rebuilt: 1 changed, 0 removed/.test(s)), log.join('\n'));   // proves the row was rewritten, not skipped
   } finally { from.cleanup(); out.cleanup(); }
 });
@@ -396,4 +399,26 @@ test('item 8: note falls back to "project" when the project directory name itsel
     assert.ok(rows[0].note.startsWith('project '), rows[0].note);
     assert.ok(!JSON.stringify(rows).toLowerCase().includes('alice'));
   } finally { from.cleanup(); out.cleanup(); wordsDir.cleanup(); }
+});
+
+test('T3: each edit-tool use also yields a PostToolUse twin with the same input and fixture; --rebuild back-fills missing twins', () => {
+  const proj = makeProject({ files: { 'package.json': '{}' } });
+  const from = makeDataDir(); const out = makeDataDir();
+  try {
+    const dir = path.join(from.dir, '-x-app'); fs.mkdirSync(dir);
+    const rec = (tool, input) => JSON.stringify({ type: 'assistant', cwd: proj.dir, timestamp: '2026-08-01T00:00:00Z', message: { content: [{ type: 'tool_use', name: tool, input }] } });
+    fs.writeFileSync(path.join(dir, 's.jsonl'), [rec('Edit', { file_path: path.join(proj.dir, 'src/a.ts') }), rec('Bash', { command: 'ls' })].join('\n') + '\n');
+    mine({ from: from.dir, out: out.dir, log: () => {} });
+    let rows = readJsonl(path.join(out.dir, 'ts.jsonl'));
+    assert.deepEqual(rows.map((v) => `${v.event} ${v.tool}`), ['PreToolUse Edit', 'PostToolUse Edit', 'PreToolUse Bash']);
+    assert.deepEqual(rows[1].input, rows[0].input); assert.deepEqual(rows[1].fixture, rows[0].fixture);
+    assert.equal(rows[1].id, vectorId('ts', 'PostToolUse', 'Edit', rows[0].input, true));
+    assert.equal(rows[1].expected, null);
+    fs.writeFileSync(path.join(out.dir, 'ts.jsonl'), rows.filter((v) => v.event !== 'PostToolUse').map((v) => JSON.stringify(v)).join('\n') + '\n');
+    const r = mine({ out: out.dir, rebuild: true, log: () => {} });
+    rows = readJsonl(path.join(out.dir, 'ts.jsonl'));
+    assert.equal(rows.filter((v) => v.event === 'PostToolUse').length, 1, 'rebuild adds the missing twin');
+    assert.equal(r.paired, 1);
+    assert.equal(mine({ out: out.dir, rebuild: true, log: () => {} }).paired, 0, 'idempotent');
+  } finally { proj.cleanup(); from.cleanup(); out.cleanup(); }
 });

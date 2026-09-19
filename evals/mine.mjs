@@ -110,9 +110,20 @@ export function toVector(use, { cwd, lang, touched, month, project, words = [] }
     if (existed) fixture = { exists: [r.text] };
     touched.add(r.text);
   }
-  const v = { id: vectorId(lang, 'PreToolUse', use.tool, input, Boolean(fixture)), lang, event: 'PreToolUse', tool: use.tool, input };
-  if (fixture) v.fixture = fixture;
-  return { ...v, expected: null, source: 'mined', note: `${project} ${month}` };
+  const events = isBash ? ['PreToolUse'] : ['PreToolUse', 'PostToolUse'];   // edit tools also feed the quality gate
+  const vectors = events.map((event) => {
+    const v = { id: vectorId(lang, event, use.tool, input, Boolean(fixture)), lang, event, tool: use.tool, input };
+    if (fixture) v.fixture = fixture;
+    return { ...v, expected: null, source: 'mined', note: `${project} ${month}` };
+  });
+  return { vectors };
+}
+
+// The PostToolUse twin of an edit-tool PreToolUse row: same input and fixture, its own id.
+function twinOf(row) {
+  const twin = { id: vectorId(row.lang, 'PostToolUse', row.tool, row.input, Boolean(row.fixture)), lang: row.lang, event: 'PostToolUse', tool: row.tool, input: row.input };
+  if (row.fixture) twin.fixture = row.fixture;
+  return { ...twin, expected: null, source: row.source, note: row.note };
 }
 
 export function mineFile(file, { fsm = fs, words = [] } = {}) {
@@ -133,7 +144,7 @@ export function mineFile(file, { fsm = fs, words = [] } = {}) {
     const project = noteProjectName(cwd, words);
     for (const use of uses) {
       const v = toVector(use, { cwd, lang, touched, month, project, words });
-      if (v.dropped) dropped[v.dropped] += 1; else vectors.push(v);
+      if (v.dropped) dropped[v.dropped] += 1; else vectors.push(...v.vectors);
     }
   }
   return { vectors, dropped };
@@ -194,8 +205,16 @@ function rebuildFile(file, lang, words) {
     newRow.note = row.note;
     kept.push(newRow);
   }
+  // Back-fill: every edit-tool PreToolUse row gets its PostToolUse twin if the corpus lacks it.
+  let paired = 0;
+  for (const row of [...kept]) {
+    if (row.tool === 'Bash' || row.event !== 'PreToolUse') continue;
+    const twin = twinOf(row);
+    if (seen.has(twin.id)) continue;
+    seen.add(twin.id); kept.push(twin); paired += 1;
+  }
   writeJsonl(file, kept);
-  return { changed, removed };
+  return { changed, removed, paired };
 }
 
 export function mine(opts = {}) {
@@ -208,6 +227,7 @@ export function mine(opts = {}) {
   if (!skipWalk && !fsm.existsSync(from)) throw new Error(`transcripts directory not found: ${from}`);
   const words = loadWords(wordsFile, fsm);
   let rebuiltRemoved = 0;
+  let paired = 0;
   if (rebuild && fsm.existsSync(out)) {
     let rebuiltChanged = 0;
     for (const f of fsm.readdirSync(out).filter((x) => x.endsWith('.jsonl')).sort()) {
@@ -215,8 +235,9 @@ export function mine(opts = {}) {
       const r = rebuildFile(path.join(out, f), lang, words);
       rebuiltChanged += r.changed;
       rebuiltRemoved += r.removed;
+      paired += r.paired;
     }
-    log(`rebuilt: ${rebuiltChanged} changed, ${rebuiltRemoved} removed`);
+    log(`rebuilt: ${rebuiltChanged} changed, ${rebuiltRemoved} removed, ${paired} PostToolUse twin(s) added`);
   }
   const byLangNew = new Map();
   const dropped = { secret: 0, 'sensitive-path': 0, 'escaping-path': 0, personal: 0, shadowed: 0, rebuilt: rebuiltRemoved };
@@ -261,7 +282,7 @@ export function mine(opts = {}) {
   log(`mined ${added} new vector(s): ${Object.entries(byLang).map(([l, n]) => `${l}=${n}`).join(' ') || 'none'}; dropped secret=${dropped.secret} sensitive-path=${dropped['sensitive-path']} escaping-path=${dropped['escaping-path']} personal=${dropped.personal} shadowed=${dropped.shadowed}`);
   log(`${longest.length} longest vectors (review before committing):`);
   for (const v of longest) log(`  ${v.id}  ${v.tool}  ${JSON.stringify(v.input.command ?? v.input.file_path).slice(0, 160)}`);
-  return { added, byLang, dropped, longest };
+  return { added, byLang, dropped, longest, paired };
 }
 
 function parseArgs(argv) {
