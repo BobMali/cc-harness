@@ -31,6 +31,8 @@ Append a line to `evals/corpus/adversarial/<guard>.jsonl`. Compute the id with `
 
 A tool call with no `file_path` is written as `"file_path": null`; the runner then sends an empty `tool_input`, which is what the guards see for such a call.
 
+An edit-tool vector may carry `"shape"`: `append` (only adds after the file's tail), `insert` (adds elsewhere), or `replace`. The miner derives it from the tool result Claude Code records next to the call (`oldString`, `newString`, `originalFile`), never storing the edited text; the runner rebuilds an equivalent edit on a fixed fixture body so the guard sees the same shape. The report's `edit shapes` block counts them with the guards' decisions: the evidence for whether append-only is enough or per-language block detection is worth building. A shaped vector supersedes a shapeless row for the same edit on re-mining.
+
 ## Known gaps
 
 No vector in the adversarial corpus is currently marked `known_gap: true`. The runner fixture under `test/fixtures/` keeps one deliberately, to exercise the `known-gap` and `gap-closed` statuses.

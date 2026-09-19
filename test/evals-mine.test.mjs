@@ -422,3 +422,39 @@ test('T3: each edit-tool use also yields a PostToolUse twin with the same input 
     assert.equal(mine({ out: out.dir, rebuild: true, log: () => {} }).paired, 0, 'idempotent');
   } finally { proj.cleanup(); from.cleanup(); out.cleanup(); }
 });
+
+test('shape: edit results are classified as append, insert, or replace from the paired tool result; shaped rows replace shapeless ones', () => {
+  const proj = makeProject({ files: { 'package.json': '{}' } });
+  const from = makeDataDir(); const out = makeDataDir();
+  try {
+    const dir = path.join(from.dir, '-x-app'); fs.mkdirSync(dir);
+    let n = 0;
+    const pair = (tool, input, result) => {
+      const id = `toolu_${++n}`;
+      return [
+        JSON.stringify({ type: 'assistant', cwd: proj.dir, timestamp: '2026-08-01T00:00:00Z', message: { content: [{ type: 'tool_use', id, name: tool, input }] } }),
+        JSON.stringify({ type: 'user', cwd: proj.dir, timestamp: '2026-08-01T00:00:01Z', message: { content: [{ type: 'tool_result', tool_use_id: id, content: 'ok' }] }, toolUseResult: result }),
+      ];
+    };
+    const fp = path.join(proj.dir, 'src/a.test.ts');
+    const lines = [
+      ...pair('Edit', { file_path: fp, old_string: 'a', new_string: 'a\nb' }, { filePath: fp, oldString: 'a', newString: 'a\nb', originalFile: 'x\na\n', replaceAll: false }),
+      ...pair('Edit', { file_path: fp, old_string: 'x', new_string: 'x\nq' }, { filePath: fp, oldString: 'x', newString: 'x\nq', originalFile: 'x\na\n', replaceAll: false }),
+      ...pair('Edit', { file_path: fp, old_string: 'a', new_string: 'c' }, { filePath: fp, oldString: 'a', newString: 'c', originalFile: 'x\na\n', replaceAll: false }),
+      ...pair('Write', { file_path: fp, content: 'x\na\nz\n' }, { type: 'update', filePath: fp, content: 'x\na\nz\n', originalFile: 'x\na\n' }),
+      ...pair('Write', { file_path: path.join(proj.dir, 'src/new.test.ts'), content: 'n' }, { type: 'create', filePath: fp, content: 'n', originalFile: null }),
+      ...pair('Edit', { file_path: path.join(proj.dir, 'src/b.test.ts'), old_string: 'a', new_string: 'b' }, undefined),   // no result: shape unknown
+    ];
+    fs.writeFileSync(path.join(dir, 's.jsonl'), lines.filter(Boolean).join('\n') + '\n');
+    // a shapeless row for src/a.test.ts from an earlier mine, with its label
+    const stale = { id: vectorId('ts', 'PreToolUse', 'Edit', { file_path: 'src/a.test.ts' }, true), lang: 'ts', event: 'PreToolUse', tool: 'Edit', input: { file_path: 'src/a.test.ts' }, fixture: { exists: ['src/a.test.ts'] }, expected: { kind: 'ask', guard: 'test' }, source: 'mined', note: 'app 2026-07' };
+    fs.writeFileSync(path.join(out.dir, 'ts.jsonl'), JSON.stringify(stale) + '\n');
+    const r = mine({ from: from.dir, out: out.dir, log: () => {} });
+    const rows = readJsonl(path.join(out.dir, 'ts.jsonl')).filter((v) => v.event === 'PreToolUse');
+    assert.deepEqual(rows.map((v) => `${v.tool} ${v.input.file_path} ${v.input.shape ?? '-'}`), [
+      'Edit src/a.test.ts append', 'Edit src/a.test.ts insert', 'Edit src/a.test.ts replace', 'Write src/a.test.ts append', 'Write src/new.test.ts -', 'Edit src/b.test.ts -',
+    ]);
+    assert.ok(!rows.some((v) => v.id === stale.id), 'the shapeless row for the same file is replaced');
+    assert.equal(r.upgraded, 1);   // the stale PreToolUse row; a twin would count as another row
+  } finally { proj.cleanup(); from.cleanup(); out.cleanup(); }
+});

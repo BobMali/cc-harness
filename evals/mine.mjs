@@ -42,8 +42,9 @@ export function extractToolUses(record) {
   for (const block of content) {
     if (block?.type !== 'tool_use' || !TOOLS.includes(block.name)) continue;
     const input = block.input ?? {};
-    if (block.name === 'Bash') { if (typeof input.command === 'string') out.push({ tool: 'Bash', input: { command: input.command } }); }
-    else if (typeof input.file_path === 'string') out.push({ tool: block.name, input: { file_path: input.file_path } });
+    const id = typeof block.id === 'string' ? { id: block.id } : {};   // pairs the call with its result record
+    if (block.name === 'Bash') { if (typeof input.command === 'string') out.push({ ...id, tool: 'Bash', input: { command: input.command } }); }
+    else if (typeof input.file_path === 'string') out.push({ ...id, tool: block.name, input: { file_path: input.file_path } });
   }
   return out;
 }
@@ -92,7 +93,21 @@ function relOrAbs(cwd, p) {
   return norm(abs);
 }
 
-export function toVector(use, { cwd, lang, touched, month, project, words = [] }) {
+// How an edit related to the existing file, from the tool result Claude Code records next to
+// the call (oldString/newString/content plus the originalFile). undefined when the result is
+// missing or the file was new. Mirrors the test guard's append rule.
+export function editShape(use, result) {
+  if (use.tool === 'Bash' || !result || typeof result !== 'object') return undefined;
+  const orig = result.originalFile;
+  if (typeof orig !== 'string') return undefined;
+  if (use.tool === 'Write') return typeof result.content === 'string' && result.content.startsWith(orig) ? 'append' : 'replace';
+  const old = result.oldString; const neu = result.newString;
+  if (typeof old !== 'string' || typeof neu !== 'string') return undefined;
+  if (result.replaceAll || !neu.includes(old)) return 'replace';
+  return old.trim() && neu.startsWith(old) && orig.trimEnd().endsWith(old.trimEnd()) ? 'append' : 'insert';
+}
+
+export function toVector(use, { cwd, lang, touched, month, project, words = [], result }) {
   const isBash = use.tool === 'Bash';
   let raw;
   if (isBash) {
@@ -104,6 +119,8 @@ export function toVector(use, { cwd, lang, touched, month, project, words = [] }
   const r = redact(raw, { cwd, words });
   if (r.dropped) return { dropped: r.dropped };
   const input = isBash ? { command: r.text } : { file_path: r.text };
+  const shape = editShape(use, result);
+  if (shape) input.shape = shape;
   let fixture;
   if (!isBash) {
     const existed = use.tool !== 'Write' || touched.has(r.text);
@@ -131,7 +148,16 @@ export function mineFile(file, { fsm = fs, words = [] } = {}) {
   const dropped = { secret: 0, 'sensitive-path': 0, 'escaping-path': 0, personal: 0 };
   const touched = new Set();
   const langCache = new Map();
-  for (const line of fsm.readFileSync(file, 'utf8').split('\n')) {
+  const lines = fsm.readFileSync(file, 'utf8').split('\n');
+  // Tool results follow their calls as user records; pair them by tool_use_id first.
+  const results = new Map();
+  for (const line of lines) {
+    if (!line.includes('toolUseResult')) continue;
+    let rec; try { rec = JSON.parse(line); } catch { continue; }
+    const id = rec?.message?.content?.[0]?.tool_use_id;
+    if (typeof id === 'string' && rec.toolUseResult && typeof rec.toolUseResult === 'object') results.set(id, rec.toolUseResult);
+  }
+  for (const line of lines) {
     if (!line.trim()) continue;
     let rec; try { rec = JSON.parse(line); } catch { continue; }
     const uses = extractToolUses(rec);
@@ -143,7 +169,7 @@ export function mineFile(file, { fsm = fs, words = [] } = {}) {
     const month = /^\d{4}-\d{2}$/.test(monthCandidate) ? monthCandidate : 'unknown';
     const project = noteProjectName(cwd, words);
     for (const use of uses) {
-      const v = toVector(use, { cwd, lang, touched, month, project, words });
+      const v = toVector(use, { cwd, lang, touched, month, project, words, result: use.id ? results.get(use.id) : undefined });
       if (v.dropped) dropped[v.dropped] += 1; else vectors.push(...v.vectors);
     }
   }
@@ -178,6 +204,7 @@ function rebuildFile(file, lang, words) {
     const r = redact(text, { cwd: undefined, words });
     if (r.dropped) { removed += 1; continue; }
     const input = isBash ? { command: r.text } : { file_path: r.text };
+    if (!isBash && row.input.shape) input.shape = row.input.shape;
 
     let fixture = row.fixture;
     let fixtureChanged = false;
@@ -266,23 +293,29 @@ export function mine(opts = {}) {
     }
   }
   let added = 0;
+  let upgraded = 0;
   const byLang = {};
   const all = [];
   for (const [lang, fresh] of byLangNew) {
     const file = path.join(out, `${lang}.jsonl`);
-    const existing = fsm.existsSync(file) ? readJsonl(file) : [];
+    let existing = fsm.existsSync(file) ? readJsonl(file) : [];
+    // A shaped vector supersedes a shapeless row for the same edit (mined before shapes existed).
+    const shapedKeys = new Set(fresh.filter((v) => v.input.shape).map((v) => `${v.event}|${v.tool}|${v.input.file_path}|${Boolean(v.fixture)}`));
+    const before = existing.length;
+    existing = existing.filter((v) => v.tool === 'Bash' || v.input.shape || !shapedKeys.has(`${v.event}|${v.tool}|${v.input.file_path}|${Boolean(v.fixture)}`));
+    upgraded += before - existing.length;
     const ids = new Set(existing.map((v) => v.id));
     const appended = fresh.filter((v) => !ids.has(v.id));
-    if (appended.length) writeJsonl(file, [...existing, ...appended]);
+    if (appended.length || before !== existing.length) writeJsonl(file, [...existing, ...appended]);
     added += appended.length;
     byLang[lang] = appended.length;
     all.push(...existing, ...appended);
   }
   const longest = [...all].sort((a, b) => JSON.stringify(b.input).length - JSON.stringify(a.input).length).slice(0, LONGEST);
-  log(`mined ${added} new vector(s): ${Object.entries(byLang).map(([l, n]) => `${l}=${n}`).join(' ') || 'none'}; dropped secret=${dropped.secret} sensitive-path=${dropped['sensitive-path']} escaping-path=${dropped['escaping-path']} personal=${dropped.personal} shadowed=${dropped.shadowed}`);
+  log(`mined ${added} new vector(s): ${Object.entries(byLang).map(([l, n]) => `${l}=${n}`).join(' ') || 'none'}; upgraded ${upgraded} shapeless row(s); dropped secret=${dropped.secret} sensitive-path=${dropped['sensitive-path']} escaping-path=${dropped['escaping-path']} personal=${dropped.personal} shadowed=${dropped.shadowed}`);
   log(`${longest.length} longest vectors (review before committing):`);
   for (const v of longest) log(`  ${v.id}  ${v.tool}  ${JSON.stringify(v.input.command ?? v.input.file_path).slice(0, 160)}`);
-  return { added, byLang, dropped, longest, paired };
+  return { added, byLang, dropped, longest, paired, upgraded };
 }
 
 function parseArgs(argv) {

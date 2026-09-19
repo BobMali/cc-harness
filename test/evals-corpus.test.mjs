@@ -93,3 +93,13 @@ test('T4: an edit-tool vector may carry file_path: null to represent a missing p
   assert.ok(validateVector({ ...v, input: { file_path: 3 } }).some((e) => /file_path/.test(e)));
   assert.equal(normalisePayload('Edit', { file_path: null }), '');
 });
+
+test('edit-tool vectors may carry a shape (append, insert, replace) that is part of the payload key', () => {
+  assert.equal(normalisePayload('Edit', { file_path: 'a.ts', shape: 'append' }), 'a.ts|shape=append');
+  assert.equal(normalisePayload('Edit', { file_path: 'a.ts' }), 'a.ts');
+  assert.notEqual(vectorId('ts', 'PreToolUse', 'Edit', { file_path: 'a.ts', shape: 'append' }, true), vectorId('ts', 'PreToolUse', 'Edit', { file_path: 'a.ts' }, true));
+  const v = { id: 'ts-abcdef', lang: 'ts', event: 'PreToolUse', tool: 'Edit', input: { file_path: 'a.ts', shape: 'insert' }, fixture: { exists: ['a.ts'] }, expected: { kind: 'ask', guard: 'test' }, source: 'adversarial' };
+  assert.deepEqual(validateVector(v), []);
+  assert.ok(validateVector({ ...v, input: { file_path: 'a.ts', shape: 'weird' } }).some((e) => /shape/.test(e)));
+  assert.ok(validateVector({ ...v, tool: 'Bash', input: { command: 'ls', shape: 'append' } }).some((e) => /shape/.test(e)));
+});

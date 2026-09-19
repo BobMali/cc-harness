@@ -14,7 +14,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CORPUS = path.join(ROOT, 'evals', 'corpus');
 
 const TOP_KEYS = new Set(['id', 'lang', 'event', 'tool', 'input', 'fixture', 'expected', 'source', 'note']);
-const INPUT_KEYS = new Set(['command', 'file_path']);
+const INPUT_KEYS = new Set(['command', 'file_path', 'shape']);   // shape: append/insert/replace of an existing file, never its text
 const UUID_PLACEHOLDER = '00000000-0000-4000-8000-000000000000';
 const SESSION_PLACEHOLDER = 'session_00000000000000000000000000';
 const EMAIL_ALLOWLIST = 'noreply@anthropic.com';
