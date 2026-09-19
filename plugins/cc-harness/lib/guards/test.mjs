@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { matchesAny, mentionsAny } from '../glob.mjs';
-import { splitSegments, tokenize, resolveTool, redirectTargets, isWrite, isSafe } from '../shell.mjs';
+import { splitSegments, tokenize, resolveTool, redirectTargets, sedWriteTargets, isWrite, isSafe } from '../shell.mjs';
 import { relTo, isOutside } from '../config.mjs';
 import { ask } from '../hook-io.mjs';
 
@@ -39,6 +39,8 @@ export function evaluate({ input, config, projectDir }) {
       const tw = resolveTool(tokens, config.commands.runnerWrappers);
       const redirected = redirectTargets(seg).filter(inScope);
       if (redirected.length) return ask(`${PREFIX}: this command redirects output into the test file ${redirected[0]}.`);
+      const sedTargets = tw.word === 'sed' ? sedWriteTargets(tw.args).filter(inScope) : [];
+      if (sedTargets.length) return ask(`${PREFIX}: this sed script writes into the test file ${sedTargets[0]}.`);
       if (!tokens.some(inScope)) continue;
       if (isWrite(tokens, tw.word, config.commands.write)) {
         return ask(`${PREFIX}: "${tw.word}" rewrites files in place and the command names a test file. Confirm the test change first.`);

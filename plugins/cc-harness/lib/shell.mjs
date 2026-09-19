@@ -267,6 +267,20 @@ const BUILTIN_IN_PLACE = {
   sed: (t) => /^-[a-zA-Z]*i/.test(t) || /^--in-place/.test(t),
 };
 
+// Files named by a `w`/`W` command inside sed script arguments (`/x/w out`, `s/a/b/w out`):
+// sed writes them even without -i. The command must follow an address or command delimiter and
+// be followed by a space; the target runs to the end of the line, as sed reads it.
+export function sedWriteTargets(args) {
+  const out = [];
+  for (const a of args) {
+    if (a.startsWith('-')) continue;
+    const re = /(?:^|[/;{}\n])[wW][ \t]+([^\n]+)/g;
+    let m;
+    while ((m = re.exec(a))) { const t = m[1].trim(); if (t) out.push(t); }
+  }
+  return out;
+}
+
 export function isWrite(tokens, word, writeCommands = []) {
   if (BUILTIN_IN_PLACE[word] && tokens.some(BUILTIN_IN_PLACE[word])) return true;
   for (const w of writeCommands) {
