@@ -14,11 +14,10 @@ Nothing open. The marketplace install was verified on 2026-09-18: `claude plugin
 
 Nothing open. Closed on 2026-09-19: `smbclient -U user%pass` redaction, the cwd substitution at `:` `;` `,`, the sed `w` command as a write, `node --check` over `evals/`, PostToolUse twins for every mined edit-tool vector, and `doctor` checks for a stale workflow or a drifted owned-entries record.
 
-## Tier 4: documented scope limits, no action planned
+## Tier 4: scope limits
 
-- **A hand-added permission entry identical to a retired harness entry is removed with it.** Ownership is recorded by text in `.claude/harness.owned.json`, so an entry the user typed that equals one `init` wrote cannot be told apart. Re-add it after the re-init.
-- **Path fragments inside scripts read as real paths.** The test guard's Bash arm matches paths token by token, so a fragment like `root + "/cmd/exit_test.go"` inside a heredoc looks like an absolute path outside the project and does not ask. Textual analysis cannot resolve the concatenation; the old whole-segment match asked on every mention instead, including scratch-directory copies.
-- **Shell variables and command substitution hide the tool word.** `G=git; $G reset --hard` or `$(which git) reset --hard` resolve to `$G` / `$(which`, so no guard applies; closing this needs shell emulation, which the guards deliberately do not attempt. Used as the runner fixture's known-gap vector (`test/fixtures/evals/corpus/adversarial/git.jsonl`, `ts-000011`).
-- **Native Windows.** Checks run through `/bin/sh`; on Windows every check aborts and the quality gate blocks every edit. Documented as unsupported; use WSL. Fix if ever needed: `process.platform === 'win32' ? process.env.ComSpec : '/bin/sh'` plus quoting rules.
-- **Windows-style paths inside Bash commands are not scrubbed.** Transcripts here are macOS.
-- **"Missing `file_path`" on an edit tool is unrepresentable as a vector** (`validateVector` requires a string); the guard's `!fp` branch is covered by unit tests only.
+What is left after 2026-09-19, each with the reason it stays open.
+
+- **Shell functions and aliases hide the tool word.** `g() { git "$@"; }; g reset --hard` resolves to `g`. Simple same-command assignments (`G=git; $G …`) and `$(which git)` are resolved now; functions and aliases need shell emulation, which the guards do not attempt. Substitution happens only at the start of a segment, so a prefix before the variable (`sudo $G reset --hard`) is not resolved either. Used as the runner fixture's known-gap vector (`test/fixtures/evals/corpus/adversarial/git.jsonl`, `ts-000011`).
+- **Path fragments inside scripts read as real paths.** A fragment like `root + "/cmd/exit_test.go"` inside a heredoc looks like an absolute path outside the project and does not ask. The conservative alternative, matching heredoc bodies as text, was measured against the mined corpus: 71 commands whose heredoc body merely mentions a test file (notes, commit bodies) would start asking. Left open on that evidence.
+- **Windows is unit-tested with fakes only.** `shellFor` resolution, the abort message, and the doctor finding are covered by tests that simulate `win32`; nothing here has run on Windows. Also, `doctor` compares the workflow byte for byte, so a checkout with `core.autocrlf` would report it stale.
