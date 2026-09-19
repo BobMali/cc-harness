@@ -1,0 +1,31 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { isAppend, isBlockInsertion, affectsOtherTests } from '../plugins/cc-harness/lib/test-edits.mjs';
+
+const JS = 'import { test } from "node:test";\n\ntest("a", () => {\n  assert.ok(1);\n});\n\n// --- later ---\n\ntest("z", () => {});\n';
+const GO = 'package x\n\nimport "testing"\n\nfunc TestA(t *testing.T) {\n\tif 1 != 1 {\n\t\tt.Fatal("x")\n\t}\n}\n\nfunc TestZ(t *testing.T) {}\n';
+
+test('isBlockInsertion: a complete top-level test block added between blocks passes, in JS/TS and Go', () => {
+  const jsEdit = { old_string: 'test("a", () => {\n  assert.ok(1);\n});', new_string: 'test("a", () => {\n  assert.ok(1);\n});\n\ntest("m", () => {\n  assert.ok("}");\n});' };
+  assert.equal(isBlockInsertion('x.test.ts', JS, [jsEdit]), true);
+  assert.equal(isBlockInsertion('x.test.mjs', JS, [{ old_string: '// --- later ---', new_string: 'describe("group", () => {\n  it("works", () => {});\n});\n\n// --- later ---' }]), true);   // added before the anchor
+  assert.equal(isBlockInsertion('x_test.go', GO, [{ old_string: '\t}\n}', new_string: '\t}\n}\n\nfunc TestM(t *testing.T) {\n\tt.Log("}")\n}' }]), true);
+});
+
+test('isBlockInsertion: anything that is not whole blocks at a block boundary is not one', () => {
+  assert.equal(isBlockInsertion('x.test.ts', JS, [{ old_string: '  assert.ok(1);', new_string: '  assert.ok(1);\n  assert.ok(2);' }]), false);          // inside a test
+  assert.equal(isBlockInsertion('x.test.ts', JS, [{ old_string: '});\n\n// --- later ---', new_string: '});\n\nconst shared = 1;\n\n// --- later ---' }]), false);   // not a test block
+  assert.equal(isBlockInsertion('x.test.ts', JS, [{ old_string: 'test("a", () => {\n  assert.ok(1);\n});', new_string: 'test("a", () => {\n  assert.ok(1);\n});\n\ntest("m", () => {\n  assert.ok(1);' }]), false);   // unbalanced
+  assert.equal(isBlockInsertion('x.test.ts', JS, [{ old_string: 'test("a", () => {', new_string: 'test("a", () => {\n\ntest("m", () => {});' }]), false);   // after an unclosed opener: inside the block
+  assert.equal(isBlockInsertion('x.test.ts', JS, [{ old_string: '"a"', new_string: '"b"' }]), false);                                              // a change
+  assert.equal(isBlockInsertion('x.test.php', 'class T {}\n', [{ old_string: 'class T {}', new_string: 'class T {}\nfunction testM() {}' }]), false);   // unsupported language
+  assert.equal(isBlockInsertion('x_test.go', GO, [{ old_string: '\t}\n}', new_string: '\t}\n}\n\nfunc helper() {}' }]), false);                  // not a test function
+});
+
+test('isAppend and affectsOtherTests moved here keep their behaviour', () => {
+  assert.equal(isAppend('Write', { content: JS + 'test("b", () => {});\n' }, JS), true);
+  assert.equal(isAppend('Edit', { old_string: 'test("z", () => {});', new_string: 'test("z", () => {});\ntest("b", () => {});' }, JS), true);
+  assert.equal(isAppend('Edit', { old_string: '"a"', new_string: '"b"' }, JS), false);
+  assert.equal(affectsOtherTests('test.only("x", () => {});'), 'test.only(');
+  assert.equal(affectsOtherTests('test("only once", () => {});'), null);
+});

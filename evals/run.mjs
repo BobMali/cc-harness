@@ -86,16 +86,26 @@ function writeEmpty(abs, content = '') { fs.mkdirSync(path.dirname(abs), { recur
 // A shaped edit vector records how a real edit related to the file (append/insert/replace), not
 // its text. The runner rebuilds an equivalent edit on a fixed body so the guard sees the same shape.
 const BODY = { existing: '// existing\n', tail: '// tail\n', added: '// added\n', changed: '// changed\n' };
+// insert-block: a whole test block between two existing ones, in the file's own language.
+const BLOCKS = {
+  js: { body: 'test("a", () => {});\n\ntest("z", () => {});\n', anchor: 'test("a", () => {});', added: '\n\ntest("m", () => {});' },
+  go: { body: 'package x\n\nfunc TestA(t *testing.T) {}\n\nfunc TestZ(t *testing.T) {}\n', anchor: 'func TestA(t *testing.T) {}', added: '\n\nfunc TestM(t *testing.T) {}' },
+};
+const blocksFor = (fp) => (/\.go$/.test(fp) ? BLOCKS.go : BLOCKS.js);
 function fixtureContent(vector, rel) {
   const shape = vector.input?.shape;
   if (!shape || rel !== vector.input.file_path) return '';
+  if (shape === 'insert-block') return blocksFor(rel).body;
   return shape === 'insert' ? BODY.existing + BODY.tail : BODY.existing;
 }
 export function editToolInput(vector, absPath) {
   const { shape } = vector.input;
   if (!shape) return { file_path: absPath };
   if (vector.tool === 'Write') return { file_path: absPath, content: shape === 'append' ? BODY.existing + BODY.added : BODY.changed };
-  const edit = shape === 'replace' ? { old_string: BODY.existing, new_string: BODY.changed } : { old_string: BODY.existing, new_string: BODY.existing + BODY.added };
+  const b = blocksFor(vector.input.file_path);
+  const edit = shape === 'replace' ? { old_string: BODY.existing, new_string: BODY.changed }
+    : shape === 'insert-block' ? { old_string: b.anchor, new_string: b.anchor + b.added }
+    : { old_string: BODY.existing, new_string: BODY.existing + BODY.added };
   return vector.tool === 'MultiEdit' ? { file_path: absPath, edits: [edit] } : { file_path: absPath, ...edit };
 }
 

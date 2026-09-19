@@ -112,7 +112,7 @@ test('append-only edits to an existing test file pass; changes, insertions befor
     assert.equal(edit('Edit', { old_string: 'test("a", () => {});', new_string: 'test("a", () => {});\n\ntest("b", () => {});' }), null);   // anchor without the trailing newline is still the tail
     assert.equal(edit('Edit', { old_string: body, new_string: body + 'test("b", () => {});\n' }), null);
     assert.equal(edit('Edit', { old_string: '"a"', new_string: '"b"' })?.kind, 'ask');                                                  // change
-    assert.equal(edit('Edit', { old_string: 'test("a"', new_string: 'test("z", () => {});\ntest("a"' })?.kind, 'ask');                 // insertion before, anchor is not the tail
+    assert.equal(edit('Edit', { old_string: 'test("a"', new_string: 'const shared = 1;\ntest("a"' })?.kind, 'ask');                    // insertion before the tail that is not a test block
     assert.equal(edit('Edit', { old_string: 'test("a", () => {});', new_string: 'test("a", () => {});\n// x', replace_all: true })?.kind, 'ask');
     assert.equal(edit('Edit', { old_string: 'test("a", () => {});', new_string: '' })?.kind, 'ask');                                    // deletion
     assert.equal(edit('Write', { content: body + 'test("b", () => {});\n' }), null);
@@ -147,5 +147,19 @@ test('an append that focuses or hooks the existing tests still asks', () => {
     assert.equal(edit('x.test.ts', 'Edit', { old_string: body, new_string: body + 'test("only once", () => {});\n' }), null);   // the word inside a name is not a marker
     const bash = (command) => evaluate(ctx(p, 'Bash', { command }));
     assert.equal(bash("cat >> x.test.ts <<'EOF'\ntest.only('b', () => {});\nEOF")?.kind, 'ask');
+  } finally { p.cleanup(); }
+});
+
+test('a whole new test block inserted between existing blocks passes; an insertion inside an existing test asks', () => {
+  const body = 'test("a", () => {\n  assert.ok(1);\n});\n\ntest("z", () => {});\n';
+  const p = makeProject({ files: { 'x.test.ts': body } });
+  const edit = (ti, config = cfg) => evaluate({ ...ctx(p, 'Edit', { file_path: path.join(p.dir, 'x.test.ts'), ...ti }), config });
+  try {
+    assert.equal(edit({ old_string: 'test("a", () => {\n  assert.ok(1);\n});', new_string: 'test("a", () => {\n  assert.ok(1);\n});\n\ntest("m", () => {});' }), null);
+    assert.equal(edit({ old_string: '  assert.ok(1);', new_string: '  assert.ok(1);\n  assert.ok(2);' })?.kind, 'ask');
+    const d = edit({ old_string: 'test("a", () => {\n  assert.ok(1);\n});', new_string: 'test("a", () => {\n  assert.ok(1);\n});\n\ntest.only("m", () => {});' });
+    assert.equal(d?.kind, 'ask'); assert.match(d.reason, /changes how the existing tests run/);
+    const off = mergeConfig(cfg, { guards: { test: { allowAppend: false } } });
+    assert.equal(edit({ old_string: 'test("a", () => {\n  assert.ok(1);\n});', new_string: 'test("a", () => {\n  assert.ok(1);\n});\n\ntest("m", () => {});' }, off)?.kind, 'ask');
   } finally { p.cleanup(); }
 });

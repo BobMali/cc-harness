@@ -103,3 +103,9 @@ test('edit-tool vectors may carry a shape (append, insert, replace) that is part
   assert.ok(validateVector({ ...v, input: { file_path: 'a.ts', shape: 'weird' } }).some((e) => /shape/.test(e)));
   assert.ok(validateVector({ ...v, tool: 'Bash', input: { command: 'ls', shape: 'append' } }).some((e) => /shape/.test(e)));
 });
+
+test('insert-block is a valid shape: a complete top-level test block added between blocks', () => {
+  const v = { id: 'ts-abcdef', lang: 'ts', event: 'PreToolUse', tool: 'Edit', input: { file_path: 'a.test.ts', shape: 'insert-block' }, fixture: { exists: ['a.test.ts'] }, expected: { kind: 'pass' }, source: 'adversarial' };
+  assert.deepEqual(validateVector(v), []);
+  assert.equal(normalisePayload('Edit', v.input), 'a.test.ts|shape=insert-block');
+});

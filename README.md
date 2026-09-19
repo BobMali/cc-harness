@@ -8,7 +8,7 @@ A POSIX shell: checks run through `/bin/sh`, or on Windows through Git for Windo
 
 | Guard | Event | Behaviour |
 |---|---|---|
-| test | before Write/Edit/Bash | prompts before an existing test file is changed, deleted, or rewritten by a command; new test files, appends after the end of an existing one (`guards.test.allowAppend`, default on), running tests, and read-only commands such as `sed -n`, `cat`, and `grep` are free |
+| test | before Write/Edit/Bash | prompts before an existing test file is changed, deleted, or rewritten by a command; new test files, appends after the end of an existing one, whole new test blocks inserted between existing ones in JS/TS and Go (`guards.test.allowAppend`, default on), running tests, and read-only commands such as `sed -n`, `cat`, and `grep` are free |
 | commit | before Bash | denies `git commit` with an inline message unless the subject matches the regex in `githooks/conventional-regex.txt`; rejects attribution trailers (configurable) |
 | quality | after Write/Edit | runs the fast checks (typecheck, lint, format) and hands the failure back to Claude with "fix this before continuing" |
 | git | before Bash | prompts before `reset --hard`, `checkout .` / `checkout -- <path>`, `restore .`, `clean -f`, `push --force`, `push --delete` / `push origin :branch`, `branch -D`, `stash drop`/`stash clear`; also inside `sh -c` / `bash -c` / `eval` bodies and behind prefixes like `timeout`, `nohup`, `sudo`, `xargs` |

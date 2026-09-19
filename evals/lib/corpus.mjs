@@ -8,7 +8,7 @@ export const TOOLS = ['Bash', 'Write', 'Edit', 'MultiEdit'];
 export const KINDS = ['pass', 'ask', 'deny', 'block'];
 export const SOURCES = ['mined', 'adversarial'];
 // Shape of an edit to an existing file: append (only adds after the tail), insert (adds elsewhere), replace.
-export const SHAPES = ['append', 'insert', 'replace'];
+export const SHAPES = ['append', 'insert-block', 'insert', 'replace'];   // insert-block: whole top-level test blocks added between blocks
 
 export function normalisePayload(tool, input = {}) {
   const s = tool === 'Bash' ? String(input.command ?? '') : String(input.file_path ?? '') + (input.shape ? `|shape=${input.shape}` : '');
