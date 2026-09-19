@@ -135,3 +135,15 @@ test('round 2 item 1: a bare -Users-<name>/-home-<name> encoding (no trailing da
   assert.equal(redact('echo -Users-', { cwd }).text, 'echo -Users-');
   assert.equal(redact('cat ~/.claude/projects/-Users-~', { cwd }).text, 'cat ~/.claude/projects/-Users-~');   // idempotent
 });
+
+test('T3: smbclient -U user%pass and --user=user%pass drop the vector; -U without a % is not a credential', () => {
+  for (const c of ['smbclient -U me%pw //host/share', 'smbclient --user=me%pw -L host', 'smbclient -Ume%pw //host/share']) assert.equal(redact(c, { cwd }).dropped, 'secret', c);
+  assert.equal(redact('grep -U pattern file', { cwd }).dropped, null);
+  assert.equal(redact('mysql -u root -p', { cwd }).dropped, null);   // a bare -p carries no secret
+});
+
+test('T3: the cwd substitution also stops at : ; and ,', () => {
+  assert.equal(redact('PATH=/Users/alice/projects/app:/bin ls', { cwd }).text, 'PATH=.:/bin ls');
+  assert.equal(redact('cd /Users/alice/projects/app; ls', { cwd }).text, 'cd .; ls');
+  assert.equal(redact('echo /Users/alice/projects/app,/tmp', { cwd }).text, 'echo .,/tmp');
+});
