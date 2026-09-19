@@ -160,3 +160,15 @@ test('sedWriteTargets finds the file after a w or W command in sed scripts, igno
   assert.deepEqual(sedWriteTargets(tokenize("sed -n '1,5p' x.test.ts").slice(1)), []);
   assert.deepEqual(sedWriteTargets(tokenize("sed -i '' 's/a/b/' x.test.ts").slice(1)), []);
 });
+
+test('flattenSegments resolves same-command variable assignments and which-substitutions at the tool position', () => {
+  assert.deepEqual(flattenSegments('G=git; $G reset --hard'), ['G=git', 'git reset --hard']);
+  assert.deepEqual(flattenSegments('export G="git"; ${G} push -f'), ['export G="git"', 'git push -f']);
+  assert.deepEqual(flattenSegments('$(which git) reset --hard'), ['git reset --hard']);
+  assert.deepEqual(flattenSegments('$(command -v git) clean -fd && `which git` status'), ['git clean -fd', 'git status']);
+  assert.deepEqual(flattenSegments('G=git; eval "$G reset --hard"'), ['G=git', 'eval "$G reset --hard"', 'git reset --hard']);
+  assert.deepEqual(flattenSegments('G=git $G reset'), ['G=git $G reset']);              // prefix assignment is per-command env, not a variable
+  assert.deepEqual(flattenSegments('$TMPDIR/x reset --hard'), ['$TMPDIR/x reset --hard']); // unknown variables stay opaque
+  assert.deepEqual(flattenSegments('G="git reset --hard"; $G'), ['G="git reset --hard"', 'git reset --hard']);   // quoted values may hold spaces
+  assert.deepEqual(flattenSegments('G=git; G=ls; $G -la'), ['G=git', 'G=ls', 'ls -la']);  // last assignment wins
+});

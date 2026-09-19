@@ -76,3 +76,10 @@ test('prefix commands and eval do not hide a destructive git command', () => {
     assert.equal(bash(c), null, `expected pass for: ${c}`);
   }
 });
+
+test('a variable or which-substitution standing in for git does not hide a destructive command', () => {
+  for (const c of ['G=git; $G reset --hard', '$(which git) push -f', 'export G=git; eval "$G stash clear"', 'G="git reset --hard"; $G']) {
+    assert.equal(bash(c)?.kind, 'ask', `expected ask for: ${c}`);
+  }
+  assert.equal(bash('G=git; $G status'), null);
+});
