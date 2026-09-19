@@ -49,3 +49,4 @@
 {"id":"ts-68a8a3","lang":"ts","event":"PreToolUse","tool":"MultiEdit","input":{"file_path":"src/a.test.ts","shape":"replace"},"fixture":{"exists":["src/a.test.ts"]},"source":"adversarial","expected":{"kind":"ask","guard":"test"},"note":"multi-edit replacement"}
 {"id":"ts-901512","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"echo x >> src/a.test.ts"},"source":"adversarial","expected":{"kind":"pass"},"note":"append redirect into a test file"}
 {"id":"ts-693948","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"cat >> src/a.test.ts <<'EOF'\ntest('x', () => {});\nEOF"},"source":"adversarial","expected":{"kind":"pass"},"note":"heredoc append into a test file"}
+{"id":"ts-b5b289","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"cat >> src/a.test.ts <<'EOF'\ntest.only('x', () => {});\nEOF"},"source":"adversarial","expected":{"kind":"ask","guard":"test"},"note":"appended focus marker changes how existing tests run"}

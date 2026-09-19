@@ -3,7 +3,7 @@
 # Testing
 
 - Work test-first. Write one failing test for one behaviour, run it, watch it fail for the right reason, write the minimum code that passes, then refactor. Do not write several tests and then the implementation.
-- An existing test is a contract. Changing or deleting one needs explicit permission: explain what the test gets wrong and wait for a yes. The test guard prompts on edits to files matching `test/**/*.test.mjs`; a prompt is a request for a human decision, not an obstacle to route around. Adding a new test file, or appending new tests after the end of an existing one, needs no permission; anything that changes, removes, or inserts before existing content does.
+- An existing test is a contract. Changing or deleting one needs explicit permission: explain what the test gets wrong and wait for a yes. The test guard prompts on edits to files matching `test/**/*.test.mjs`; a prompt is a request for a human decision, not an obstacle to route around. Adding a new test file, or appending new tests after the end of an existing one, needs no permission; anything that changes, removes, or inserts before existing content does, and so does an appended focus marker (`.only`, `fit`), a file-level hook (`beforeEach`, `afterAll`), or a `TestMain`, because those change how the existing tests run.
 - Never weaken an assertion to make a test pass. If a test is wrong, say so and ask.
 - Running tests never needs permission.
 - Read files with the Read tool, not with shell readers such as `sed -n`, `cat`, or `head`. The guards treat `sed -i` as a write and other sed calls as read-only, but the Read tool never needs a decision at all.

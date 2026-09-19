@@ -23,7 +23,14 @@ export function evaluate({ input, config, projectDir }) {
     if (isOutside(rel) || matchesAny(rel, ignoreGlobs) || !matchesAny(rel, testGlobs)) return null;
     const abs = path.resolve(projectDir, ti.file_path);
     if (!fs.existsSync(abs)) return null;
-    if (config.guards.test.allowAppend && isAppend(tool, ti, fs.readFileSync(abs, 'utf8'))) return null;
+    if (config.guards.test.allowAppend) {
+      const current = fs.readFileSync(abs, 'utf8');
+      if (isAppend(tool, ti, current)) {
+        const marker = affectsOtherTests(appendedText(tool, ti, current));
+        if (!marker) return null;
+        return ask(`${PREFIX}: the text appended to ${rel} contains "${marker}", which changes how the existing tests run (focus, skip, or a shared hook). Explain why and ask before adding it.`);
+      }
+    }
     return ask(`${PREFIX}: ${rel} is an existing test file. Changing an existing test needs explicit permission; explain what the test gets wrong and ask before editing it. (Appending new tests at the end of the file does not need permission.)`);
   }
 
@@ -41,6 +48,9 @@ export function evaluate({ input, config, projectDir }) {
       const tw = resolveTool(tokens, config.commands.runnerWrappers);
       const redirected = redirections(seg).filter((r) => !(r.append && config.guards.test.allowAppend)).map((r) => r.target).filter(inScope);
       if (redirected.length) return ask(`${PREFIX}: this command redirects output into the test file ${redirected[0]}.`);
+      const appended = redirections(seg).filter((r) => r.append).map((r) => r.target).filter(inScope);
+      const marker = appended.length ? affectsOtherTests(seg) : null;
+      if (marker) return ask(`${PREFIX}: the text appended to ${appended[0]} contains "${marker}", which changes how the existing tests run (focus, skip, or a shared hook). Explain why and ask before adding it.`);
       const sedTargets = tw.word === 'sed' ? sedWriteTargets(tw.args).filter(inScope) : [];
       if (sedTargets.length) return ask(`${PREFIX}: this sed script writes into the test file ${sedTargets[0]}.`);
       if (!tokens.some(inScope)) continue;
@@ -72,4 +82,23 @@ function isAppend(tool, ti, current) {
     text = text.slice(0, idx) + e.new_string + text.slice(idx + e.old_string.length);
   }
   return true;
+}
+
+// Text an append adds: everything after the current content (Write) or after each old_string.
+function appendedText(tool, ti, current) {
+  if (tool === 'Write') return ti.content.slice(current.length);
+  const edits = tool === 'Edit' ? [ti] : ti.edits;
+  return edits.map((e) => e.new_string.slice(e.old_string.length)).join('\n');
+}
+
+// Markers that change how the tests already in the file run even though nothing existing was
+// edited: focused tests skip their siblings, file-level hooks wrap them, TestMain owns the run.
+const OTHER_TEST_MARKERS = [
+  /\b(?:test|it|describe|context|suite)\.only\s*\(/, /\b(?:fit|fdescribe|fcontext|ftest)\s*\(/,
+  /^\s*(?:beforeAll|beforeEach|afterAll|afterEach|before|after|setup|teardown)\s*\(/m,
+  /\bfunc TestMain\s*\(/, /\bautouse\s*=\s*True\b/, /@pytest\.fixture\s*\([^)]*scope\s*=\s*["'](?:module|session)/,
+];
+function affectsOtherTests(text) {
+  for (const re of OTHER_TEST_MARKERS) { const m = re.exec(text); if (m) return m[0].trim(); }
+  return null;
 }

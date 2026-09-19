@@ -132,3 +132,20 @@ test('append-only edits to an existing test file pass; changes, insertions befor
     assert.equal(evaluate({ ...ctx(p, 'Bash', { command: 'echo x >> x.test.ts' }), config: off })?.kind, 'ask');
   } finally { p.cleanup(); }
 });
+
+test('an append that focuses or hooks the existing tests still asks', () => {
+  const body = 'test("a", () => {});\n';
+  const p = makeProject({ files: { 'x.test.ts': body, 'y_test.go': 'package x\n' } });
+  const edit = (file, tool, ti) => evaluate(ctx(p, tool, { file_path: path.join(p.dir, file), ...ti }));
+  try {
+    for (const added of ['test.only("b", () => {});\n', 'describe.only("b", () => {});\n', 'fit("b", () => {});\n', 'beforeEach(() => {});\n', 'afterAll(() => {});\n']) {
+      const d = edit('x.test.ts', 'Edit', { old_string: body, new_string: body + added });
+      assert.equal(d?.kind, 'ask', added); assert.match(d.reason, /changes how the existing tests run/);
+    }
+    const goCfg = mergeConfig(cfg, { project: { testGlobs: [...cfg.project.testGlobs, '**/*_test.go'] } });   // the shared cfg has no Go glob
+    assert.equal(evaluate({ ...ctx(p, 'Write', { file_path: path.join(p.dir, 'y_test.go'), content: 'package x\nfunc TestMain(m *testing.M) {}\n' }), config: goCfg })?.kind, 'ask');
+    assert.equal(edit('x.test.ts', 'Edit', { old_string: body, new_string: body + 'test("only once", () => {});\n' }), null);   // the word inside a name is not a marker
+    const bash = (command) => evaluate(ctx(p, 'Bash', { command }));
+    assert.equal(bash("cat >> x.test.ts <<'EOF'\ntest.only('b', () => {});\nEOF")?.kind, 'ask');
+  } finally { p.cleanup(); }
+});
