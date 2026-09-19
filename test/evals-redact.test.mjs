@@ -147,3 +147,9 @@ test('T3: the cwd substitution also stops at : ; and ,', () => {
   assert.equal(redact('cd /Users/alice/projects/app; ls', { cwd }).text, 'cd .; ls');
   assert.equal(redact('echo /Users/alice/projects/app,/tmp', { cwd }).text, 'echo .,/tmp');
 });
+
+test('T4: Windows home directories are scrubbed to ~ in either slash direction; a drive path without a user is untouched', () => {
+  assert.equal(redact('type C:\\Users\\alice\\proj\\a.ts', { cwd }).text, 'type ~\\proj\\a.ts');
+  assert.equal(redact('cat C:/Users/alice/proj/a.ts', { cwd }).text, 'cat ~/proj/a.ts');
+  assert.equal(redact('dir D:\\work\\x', { cwd }).text, 'dir D:\\work\\x');
+});
