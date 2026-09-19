@@ -1,1 +1,8 @@
-{ "version": 1, "preset": "custom" }
+{
+  "version": 1,
+  "preset": "custom",
+  "project": { "markerFile": "", "sourceGlobs": [], "testGlobs": ["**/*.test.*", "**/*.spec.*", "**/*_test.go", "**/__tests__/**"] },
+  "commands": { "safe": ["node"], "write": [{ "cmd": "node", "whenFlags": ["-e", "--eval", "-p", "--print"] }] },
+  "checks": [],
+  "guards": { "stop": { "checks": [] } }
+}
