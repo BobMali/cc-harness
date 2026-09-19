@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { GUARD_NAMES, SUPPORTED_VERSION, isGuardEnabled } from './config.mjs';
+import { render, templateVars, templatesDir, DEFAULT_TYPES } from './render.mjs';
 
 export const RULE_NAMES = ['testing', 'done', 'commits', 'models', 'harness'];
 export const NODE_FLOOR = 18;
@@ -54,6 +55,33 @@ export function diagnose({ projectDir, loaded, exec, fs, pluginVersion, nodeVers
     const stamp = ruleStamp(fs.readFileSync(path.resolve(projectDir, rel), 'utf8'));
     if (stamp === pluginVersion) ok(`${rel} current`);
     else warn(`${rel} is stamped v${stamp ?? '?'} but the plugin is ${pluginVersion}; run harness sync-rules`);
+  }
+
+  // The workflow is rendered from harness.json; a config edit leaves it stale until sync-ci runs.
+  // Only compared when the file exists: a project may have removed its CI on purpose.
+  const wf = '.github/workflows/harness.yml';
+  if (exists(wf)) {
+    let expected = null;
+    try {
+      expected = render(fs.readFileSync(path.join(templatesDir(), 'ci.yml.tmpl'), 'utf8'), templateVars({ config: c, types: DEFAULT_TYPES, scopes: [], pluginVersion, projectName: path.basename(projectDir) }));
+    } catch { /* unrenderable config: reported below */ }
+    if (expected === null) warn(`${wf} could not be rendered from .claude/harness.json for comparison`);
+    else if (fs.readFileSync(path.resolve(projectDir, wf), 'utf8') === expected) ok(`${wf} current`);
+    else warn(`${wf} differs from what .claude/harness.json renders; run harness sync-ci`);
+  }
+
+  // The owned record lists the permission entries init wrote; each should still be in settings.
+  const ownedRel = '.claude/harness.owned.json';
+  const settingsRel = '.claude/settings.json';
+  if (exists(ownedRel) && exists(settingsRel)) {
+    try {
+      const owned = JSON.parse(fs.readFileSync(path.resolve(projectDir, ownedRel), 'utf8')).permissions ?? {};
+      const perms = JSON.parse(fs.readFileSync(path.resolve(projectDir, settingsRel), 'utf8')).permissions ?? {};
+      const missing = [];
+      for (const k of ['allow', 'ask', 'deny']) for (const e of owned[k] ?? []) if (!(perms[k] ?? []).includes(e)) missing.push(e);
+      if (!missing.length) ok(`${ownedRel} matches ${settingsRel}`);
+      else warn(`${missing.length} harness-owned permission entr${missing.length === 1 ? 'y is' : 'ies are'} missing from ${settingsRel} (${missing.slice(0, 3).join(', ')}${missing.length > 3 ? ', …' : ''}); run init --force or re-add them`);
+    } catch { warn(`${ownedRel} or ${settingsRel} is not valid JSON`); }
   }
   return finish(F);
 }

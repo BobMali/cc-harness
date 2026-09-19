@@ -24,5 +24,7 @@ The command exits 1 only when a finding is an error (✖); warnings (⚠) alone 
 | `core.hooksPath is not "githooks"` | `git config core.hooksPath githooks` |
 | `rules ... missing` or `stamped vX but plugin is vY` | `node "${CLAUDE_PLUGIN_ROOT}/bin/harness.mjs" sync-rules --target "$CLAUDE_PROJECT_DIR"` |
 | `node vN is below 18` | install Node 18 or newer; hooks cannot run otherwise |
+| `harness.yml differs from what harness.json renders` | `node "${CLAUDE_PLUGIN_ROOT}/bin/harness.mjs" sync-ci --target "$CLAUDE_PROJECT_DIR"`; a check or the `ci` block changed since the workflow was rendered |
+| `N harness-owned permission entries are missing from settings.json` | re-add the listed entries to `.claude/settings.json`, or run `init --force` to rewrite them; the record lives in `.claude/harness.owned.json` |
 
 A guard that "did not fire" almost always means one of: no `harness.json` (or it's invalid — guards go inactive except a PreToolUse ask), the marker file is absent, the guard is disabled in `guards.<name>.enabled`, or the path matched `ignoreGlobs`. For the test guard specifically, an empty `project.testGlobs` disables it outright. Check those in order.

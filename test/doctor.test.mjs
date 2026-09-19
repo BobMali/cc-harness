@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import { diagnose, formatStatus, ruleStamp, RULE_NAMES } from '../plugins/cc-harness/lib/doctor.mjs';
 import { loadConfig } from '../plugins/cc-harness/lib/config.mjs';
 import { makeProject } from './helpers/project.mjs';
+import { syncCi } from '../plugins/cc-harness/lib/init.mjs';
 
 const REGEX = '^(feat|fix)(\\((cli)\\))?!?: [a-z].{0,64}[^.]$\n# types: feat fix\n# scopes: cli\n';
 const rules = Object.fromEntries(RULE_NAMES.map((n) => [`.claude/rules/harness-${n}.md`, '<!-- cc-harness: v0.1.0 -->\n# x\n']));
@@ -68,5 +69,19 @@ test('item7: hooksPath comparison resolves relative and absolute git output agai
       const r = report(p, { exec });
       assert.deepEqual(r.findings.filter((f) => f.level !== 'ok'), [], output);
     }
+  } finally { p.cleanup(); }
+});
+
+test('T3: a stale workflow and owned entries missing from settings are warnings; a synced workflow is current', () => {
+  const owned = JSON.stringify({ version: 1, permissions: { allow: ['Bash(tc:*)', 'Bash(git status:*)'], ask: [], deny: [] } });
+  const p = makeProject({ config, marker: 'package.json', files: { 'githooks/conventional-regex.txt': REGEX, 'githooks/commit-msg': '#!/bin/sh\n', ...rules, '.github/workflows/harness.yml': 'stale', '.claude/harness.owned.json': owned, '.claude/settings.json': JSON.stringify({ permissions: { allow: ['Bash(git status:*)'] } }) } });
+  try {
+    let texts = report(p).findings.filter((f) => f.level === 'warn').map((f) => f.text).join('\n');
+    assert.match(texts, /\.github\/workflows\/harness\.yml differs from what \.claude\/harness\.json renders; run harness sync-ci/);
+    assert.match(texts, /1 harness-owned permission entr.* missing from \.claude\/settings\.json/);
+    assert.equal(syncCi({ targetDir: p.dir, pluginVersion: '0.1.0' }, { stdout: { write() {} }, stderr: { write() {} } }), 0);
+    texts = report(p).findings.map((f) => `${f.level} ${f.text}`).join('\n');
+    assert.match(texts, /ok \.github\/workflows\/harness\.yml current/);
+    assert.doesNotMatch(texts, /warn .*harness\.yml/);
   } finally { p.cleanup(); }
 });
