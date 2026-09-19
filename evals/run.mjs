@@ -81,7 +81,23 @@ export function makeLangProject(lang, configsDir = DEFAULT_CONFIGS) {
   }
 }
 
-function writeEmpty(abs) { fs.mkdirSync(path.dirname(abs), { recursive: true }); if (!fs.existsSync(abs)) { fs.writeFileSync(abs, ''); return true; } return false; }
+function writeEmpty(abs, content = '') { fs.mkdirSync(path.dirname(abs), { recursive: true }); if (!fs.existsSync(abs)) { fs.writeFileSync(abs, content); return true; } return false; }
+
+// A shaped edit vector records how a real edit related to the file (append/insert/replace), not
+// its text. The runner rebuilds an equivalent edit on a fixed body so the guard sees the same shape.
+const BODY = { existing: '// existing\n', tail: '// tail\n', added: '// added\n', changed: '// changed\n' };
+function fixtureContent(vector, rel) {
+  const shape = vector.input?.shape;
+  if (!shape || rel !== vector.input.file_path) return '';
+  return shape === 'insert' ? BODY.existing + BODY.tail : BODY.existing;
+}
+export function editToolInput(vector, absPath) {
+  const { shape } = vector.input;
+  if (!shape) return { file_path: absPath };
+  if (vector.tool === 'Write') return { file_path: absPath, content: shape === 'append' ? BODY.existing + BODY.added : BODY.changed };
+  const edit = shape === 'replace' ? { old_string: BODY.existing, new_string: BODY.changed } : { old_string: BODY.existing, new_string: BODY.existing + BODY.added };
+  return vector.tool === 'MultiEdit' ? { file_path: absPath, edits: [edit] } : { file_path: absPath, ...edit };
+}
 
 function inside(root, abs) { const rel = path.relative(root, abs); return rel && !rel.startsWith('..') && !path.isAbsolute(rel); }
 
@@ -96,12 +112,12 @@ export function evaluateVector(vector, project, dataDir) {
   for (const rel of vector.fixture?.exists ?? []) {
     const abs = resolveFilePath(project.dir, rel);
     if (!inside(project.dir, abs)) continue;
-    if (writeEmpty(abs)) created.push(abs);
+    if (writeEmpty(abs, fixtureContent(vector, rel))) created.push(abs);
   }
   try {
     const toolInput = vector.tool === 'Bash'
       ? { command: vector.input.command }
-      : vector.input.file_path === null ? {} : { file_path: resolveFilePath(project.dir, vector.input.file_path) };   // null: the tool call had no path
+      : vector.input.file_path === null ? {} : editToolInput(vector, resolveFilePath(project.dir, vector.input.file_path));   // null: the tool call had no path
     const input = { hook_event_name: vector.event, tool_name: vector.tool, tool_input: toolInput, session_id: 'eval', cwd: project.dir };
     const ctx = { event: vector.event, input, config: project.config, projectDir: project.dir, dataDir, pluginRoot: pluginRoot(), exec: vector.event === 'PostToolUse' ? FAIL_EXEC : STUB_EXEC, fs, now: () => Date.now() };
     const crashed = [];
@@ -156,9 +172,9 @@ export function sampleViaCli(results, projects, { sample, dataDir, rng = Math.ra
     const v = r.vector; const project = projects.get(v.lang);
     const cliDir = project.cliDir;
     const created = [];
-    for (const rel of v.fixture?.exists ?? []) { const abs = resolveFilePath(cliDir, rel); if (inside(cliDir, abs) && writeEmpty(abs)) created.push(abs); }
+    for (const rel of v.fixture?.exists ?? []) { const abs = resolveFilePath(cliDir, rel); if (inside(cliDir, abs) && writeEmpty(abs, fixtureContent(v, rel))) created.push(abs); }
     try {
-      const toolInput = v.tool === 'Bash' ? { command: v.input.command } : v.input.file_path === null ? {} : { file_path: resolveFilePath(cliDir, v.input.file_path) };
+      const toolInput = v.tool === 'Bash' ? { command: v.input.command } : v.input.file_path === null ? {} : editToolInput(v, resolveFilePath(cliDir, v.input.file_path));
       const input = JSON.stringify({ hook_event_name: v.event, tool_name: v.tool, tool_input: toolInput, session_id: 'eval-cli', cwd: cliDir });
       const p = spawnSync(process.execPath, [BIN, 'hook', v.event], { input, encoding: 'utf8', timeout: 30_000, env: { ...process.env, CLAUDE_PROJECT_DIR: cliDir, CLAUDE_PLUGIN_DATA: dataDir, ...cliEnv } });
       if (p.error || p.status !== 0) { mismatches.push({ id: v.id, inProcess: r.actual.kind, viaCli: p.error?.code ?? `exit ${p.status}` }); continue; }

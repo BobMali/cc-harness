@@ -1,4 +1,4 @@
-import { KINDS } from './corpus.mjs';
+import { KINDS, SHAPES } from './corpus.mjs';
 
 export function matrix(results) {
   const m = {};
@@ -23,6 +23,20 @@ export function formatReport(results, { elapsedMs = 0, shadowed = 0, viaCli = nu
     for (const guard of Object.keys(m[lang]).sort()) {
       lines.push(`${pad(lang, 6)}| ${pad(guard, 9)}| ${KINDS.map((k) => pad(m[lang][guard][k], 6)).join('| ')}`);
     }
+  }
+  // How real edits to existing files relate to them, with what the guards decided: the
+  // evidence for whether append-only is enough or per-language block detection is needed.
+  const shaped = results.filter((r) => r.vector.event === 'PreToolUse' && r.vector.input.shape && r.actual.kind !== 'crashed');
+  if (shaped.length) {
+    lines.push('', 'edit shapes (PreToolUse, mined + adversarial):');
+    for (const shape of SHAPES) {
+      const rows = shaped.filter((r) => r.vector.input.shape === shape);
+      if (!rows.length) continue;
+      const kinds = KINDS.map((k) => `${k} ${rows.filter((r) => r.actual.kind === k).length}`).join(' · ');
+      lines.push(`  ${pad(shape, 8)} ${pad(rows.length, 5)} ${kinds}`);
+    }
+    const unshaped = results.filter((r) => r.vector.event === 'PreToolUse' && r.vector.tool !== 'Bash' && r.vector.fixture && !r.vector.input.shape).length;
+    if (unshaped) lines.push(`  ${pad('unknown', 8)} ${pad(unshaped, 5)} (existing-file edits mined without a tool result)`);
   }
   const by = (s) => results.filter((r) => r.status === s);
   const describe = (r) => `  ${r.vector.id}  ${r.vector.tool}  ${JSON.stringify(r.vector.input.command ?? r.vector.input.file_path)}`;

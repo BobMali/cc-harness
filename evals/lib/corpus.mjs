@@ -7,9 +7,11 @@ export const EVENTS = ['PreToolUse', 'PostToolUse'];
 export const TOOLS = ['Bash', 'Write', 'Edit', 'MultiEdit'];
 export const KINDS = ['pass', 'ask', 'deny', 'block'];
 export const SOURCES = ['mined', 'adversarial'];
+// Shape of an edit to an existing file: append (only adds after the tail), insert (adds elsewhere), replace.
+export const SHAPES = ['append', 'insert', 'replace'];
 
 export function normalisePayload(tool, input = {}) {
-  const s = tool === 'Bash' ? String(input.command ?? '') : String(input.file_path ?? '');
+  const s = tool === 'Bash' ? String(input.command ?? '') : String(input.file_path ?? '') + (input.shape ? `|shape=${input.shape}` : '');
   return s.replace(/[ \t]+/g, ' ').replace(/[ \t]*\n[ \t]*/g, '\n').trim();
 }
 
@@ -63,6 +65,10 @@ export function validateVector(v) {
   if (!v.input || typeof v.input !== 'object') e.push('input must be an object');
   else if (v.tool === 'Bash' && typeof v.input.command !== 'string') e.push('input.command must be a string for Bash');
   else if (v.tool !== 'Bash' && typeof v.input.file_path !== 'string' && v.input.file_path !== null) e.push('input.file_path must be a string (or null for a missing path) for edit tools');
+  if (v.input && typeof v.input === 'object' && v.input.shape !== undefined) {
+    if (v.tool === 'Bash') e.push('input.shape applies to edit tools only');
+    else if (!SHAPES.includes(v.input.shape)) e.push(`input.shape "${v.input.shape}" must be one of ${SHAPES.join(' ')}`);
+  }
   if (v.expected !== null && v.expected !== undefined) {
     if (typeof v.expected !== 'object') e.push('expected must be null or an object');
     else if (!KINDS.includes(v.expected.kind)) e.push(`expected.kind "${v.expected.kind}" must be one of ${KINDS.join(' ')}`);
