@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { selectChecks, runChecks, defaultExec, formatFailure, tail } from '../plugins/cc-harness/lib/checks.mjs';
+import { selectChecks, runChecks, defaultExec, formatFailure, tail, shellFor } from '../plugins/cc-harness/lib/checks.mjs';
 import { DEFAULTS, mergeConfig } from '../plugins/cc-harness/lib/config.mjs';
 import { makeProject } from './helpers/project.mjs';
 
@@ -44,4 +44,19 @@ test('defaultExec: a hung/aborted command surfaces the error up front', () => {
   const r = defaultExec('sleep 5', { cwd: '/tmp', timeoutMs: 200 });
   assert.notEqual(r.status, 0);
   assert.ok(r.output.startsWith('check aborted: ETIMEDOUT'), r.output);
+});
+
+test('T4: shellFor is /bin/sh off Windows; on win32 it probes PATH, then Git for Windows locations; null when none exists', () => {
+  assert.equal(shellFor({ platform: 'darwin', env: {}, existsSync: () => false }), '/bin/sh');
+  assert.equal(shellFor({ platform: 'win32', env: { PATH: 'C:\\x;C:\\tools' }, existsSync: (p) => p === 'C:\\tools\\sh.exe' }), 'C:\\tools\\sh.exe');
+  assert.equal(shellFor({ platform: 'win32', env: { Path: 'C:\\x', ProgramFiles: 'C:\\Program Files' }, existsSync: (p) => p === 'C:\\Program Files\\Git\\bin\\sh.exe' }), 'C:\\Program Files\\Git\\bin\\sh.exe');
+  assert.equal(shellFor({ platform: 'win32', env: { PATH: 'C:\\x', LOCALAPPDATA: 'C:\\Users\\u\\AppData\\Local' }, existsSync: (p) => p === 'C:\\Users\\u\\AppData\\Local\\Programs\\Git\\bin\\sh.exe' }), 'C:\\Users\\u\\AppData\\Local\\Programs\\Git\\bin\\sh.exe');
+  assert.equal(shellFor({ platform: 'win32', env: { PATH: 'C:\\x' }, existsSync: () => false }), null);
+});
+
+test('T4: defaultExec with no shell aborts with an actionable message and spawns nothing', () => {
+  const r = defaultExec('true', { cwd: process.cwd(), shell: null });
+  assert.equal(r.status, 1);
+  assert.match(r.output, /no POSIX shell found; install Git for Windows or use WSL/);
+  assert.equal(defaultExec('exit 0', { cwd: process.cwd() }).status, 0);   // default shell still works here
 });

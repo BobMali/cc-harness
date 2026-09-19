@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
@@ -7,8 +8,22 @@ export function selectChecks(config, { scope = 'fast' } = {}) {
   return scope === 'all' ? config.checks : config.checks.filter((c) => c.fast === true);
 }
 
-export function defaultExec(cmd, { cwd, timeoutMs = 540_000 } = {}) {
-  const r = spawnSync('/bin/sh', ['-c', cmd], {
+// The POSIX shell checks run through: /bin/sh everywhere but Windows, where Git for Windows'
+// sh.exe is looked up on PATH and in its usual install locations. null means no shell.
+export function shellFor({ platform = process.platform, env = process.env, existsSync = fs.existsSync } = {}) {
+  if (platform !== 'win32') return '/bin/sh';
+  const pathVar = env.PATH ?? env.Path ?? env.path ?? '';
+  const candidates = pathVar.split(';').filter(Boolean).map((d) => path.win32.join(d, 'sh.exe'));
+  const roots = [env.ProgramFiles, env['ProgramFiles(x86)'], env.LOCALAPPDATA && path.win32.join(env.LOCALAPPDATA, 'Programs')].filter(Boolean);
+  for (const r of roots) candidates.push(path.win32.join(r, 'Git', 'bin', 'sh.exe'));
+  return candidates.find((c) => existsSync(c)) ?? null;
+}
+
+export const NO_SHELL = 'check aborted: no POSIX shell found; install Git for Windows or use WSL';
+
+export function defaultExec(cmd, { cwd, timeoutMs = 540_000, shell = shellFor() } = {}) {
+  if (shell === null) return { status: 1, output: NO_SHELL };
+  const r = spawnSync(shell, ['-c', cmd], {
     cwd, encoding: 'utf8', timeout: timeoutMs,
     env: { ...process.env, CI: process.env.CI ?? '1', FORCE_COLOR: '0', NO_COLOR: '1' },
     maxBuffer: 16 * 1024 * 1024,

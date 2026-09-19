@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { GUARD_NAMES, SUPPORTED_VERSION, isGuardEnabled } from './config.mjs';
 import { render, templateVars, templatesDir, DEFAULT_TYPES } from './render.mjs';
+import { shellFor } from './checks.mjs';
 
 export const RULE_NAMES = ['testing', 'done', 'commits', 'models', 'harness'];
 export const NODE_FLOOR = 18;
@@ -11,7 +12,7 @@ export function ruleStamp(text) {
   return m ? m[1] : null;
 }
 
-export function diagnose({ projectDir, loaded, exec, fs, pluginVersion, nodeVersion = process.version }) {
+export function diagnose({ projectDir, loaded, exec, fs, pluginVersion, nodeVersion = process.version, platform = process.platform, env = process.env }) {
   const F = [];
   const ok = (t) => F.push({ level: 'ok', text: t });
   const warn = (t) => F.push({ level: 'warn', text: t });
@@ -20,6 +21,9 @@ export function diagnose({ projectDir, loaded, exec, fs, pluginVersion, nodeVers
 
   const major = parseInt(String(nodeVersion).replace(/^v/, ''), 10);
   if (major >= NODE_FLOOR) ok(`node ${nodeVersion}`); else error(`node ${nodeVersion} is below the required ${NODE_FLOOR}`);
+
+  const sh = shellFor({ platform, env, existsSync: fs.existsSync });
+  if (sh) ok(`shell ${sh}`); else error('no POSIX shell found; install Git for Windows (its sh.exe) or use WSL; every check aborts until then');
 
   const git = exec('git --version', { cwd: projectDir });
   if (git.status === 0) ok('git available'); else error('git is not available on PATH');
