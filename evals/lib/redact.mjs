@@ -10,6 +10,7 @@ export const SECRET_PATTERNS = [
   /(?:^|\s)(?:-u|--user)[= ]?[^\s:\/=-][^\s:\/]*:(?!\/)\S+/,
   /:\/\/[^/\s@:]{20,}@/,
   /(?:^|[\s;&|])(?:docker\s+login|login|mysql|mysqldump|mariadb|sshpass|smbclient)\s[^\n;&|]*-p\s*\S/,
+  /(?:^|\s)(?:-U|--user[= ])\s*[^\s%]+%\S+/,   // smbclient -U user%pass, --user=user%pass
   /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b|\bgh[pousr]_[A-Za-z0-9]{20,}|\bgithub_pat_\w{20,}|\bxox[abprs]-[A-Za-z0-9-]{10,}|\bsk-[A-Za-z0-9_-]{20,}|\bsk_(?:live|test)_\w{10,}|\bglpat-[\w-]{20,}|\bAIza[\w-]{35}/,
 ];
 
@@ -36,7 +37,7 @@ function hasEmail(t) {
 export function redact(text, { cwd, words = [] } = {}) {
   let t = String(text);
   const c = cwd ? cwd.replace(/\/+$/, '') : '';
-  if (c.length >= 2) t = t.replace(new RegExp(`${escapeRe(c)}(?=/|\\s|["']|$)`, 'g'), '.');
+  if (c.length >= 2) t = t.replace(new RegExp(`${escapeRe(c)}(?=/|\\s|["':;,]|$)`, 'g'), '.');
   t = t.replace(/\/Users\/[^/\s"':;]+/g, '~').replace(/\/home\/[^/\s"':;]+/g, '~');
   t = t.replace(/-(Users|home)-[^-/\s"']+(?=-|\/|\s|["']|$)/g, '-$1-~');
   t = t.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '00000000-0000-4000-8000-000000000000');
