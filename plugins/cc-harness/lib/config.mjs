@@ -27,7 +27,7 @@ export const DEFAULTS = Object.freeze({
   },
   checks: [],
   guards: {
-    test: { enabled: true },
+    test: { enabled: true, allowAppend: true },   // appending to an existing test file passes; changing it asks
     commit: { enabled: true, regexFile: 'githooks/conventional-regex.txt', rejectAttributionTrailers: true },
     quality: { enabled: true, scope: 'fast' },
     git: { enabled: true },
@@ -129,6 +129,7 @@ export function validateConfig(c) {
   for (const g of GUARD_NAMES) {
     if (typeof c.guards?.[g]?.enabled !== 'boolean') errors.push(`guards.${g}.enabled must be a boolean`);
   }
+  if ('allowAppend' in (c.guards?.test ?? {}) && typeof c.guards.test.allowAppend !== 'boolean') errors.push('guards.test.allowAppend must be a boolean');
   if (!['fast', 'all'].includes(c.guards?.quality?.scope)) errors.push(`guards.quality.scope must be "fast" or "all"`);
   if (typeof c.guards?.commit?.regexFile !== 'string') errors.push('guards.commit.regexFile must be a string');
   const mb = c.guards?.stop?.maxBlocks;

@@ -53,7 +53,7 @@ test('bash: the ldsum vectors, translated', () => {
     assert.equal(bash('eslint --fix src/x.test.ts')?.kind, 'ask');
     assert.equal(bash(`node -e "require('fs').writeFileSync('x.test.ts','')"`)?.kind, 'ask');
     assert.equal(bash('echo x > x.test.ts')?.kind, 'ask');
-    assert.equal(bash('cat a.ts >> src/__tests__/b.ts')?.kind, 'ask');
+    assert.equal(bash('cat a.ts >> src/__tests__/b.ts'), null);   // an append to a test file is allowed (guards.test.allowAppend)
     assert.equal(bash('npm run lint:fix x.test.ts')?.kind, 'ask'); // unknown script word, conservative
     assert.equal(bash('ls && rm x.test.ts')?.kind, 'ask');           // second segment
     assert.equal(bash('git checkout x.test.ts')?.kind, 'ask');
@@ -101,5 +101,34 @@ test('a sed w command that writes a test file asks even without -i; writing else
     const d = bash("sed -n '/x/w x.test.ts' src.ts");
     assert.equal(d?.kind, 'ask'); assert.match(d.reason, /writes into the test file x\.test\.ts/);
     assert.equal(bash("sed -n '/x/w out.txt' x.test.ts"), null);
+  } finally { p.cleanup(); }
+});
+
+test('append-only edits to an existing test file pass; changes, insertions before the tail, and rewrites ask', () => {
+  const body = 'test("a", () => {});\n';
+  const p = makeProject({ files: { 'x.test.ts': body } });
+  const edit = (tool, ti, config = cfg) => evaluate({ ...ctx(p, tool, { file_path: path.join(p.dir, 'x.test.ts'), ...ti }), config });
+  try {
+    assert.equal(edit('Edit', { old_string: 'test("a", () => {});', new_string: 'test("a", () => {});\n\ntest("b", () => {});' }), null);   // anchor without the trailing newline is still the tail
+    assert.equal(edit('Edit', { old_string: body, new_string: body + 'test("b", () => {});\n' }), null);
+    assert.equal(edit('Edit', { old_string: '"a"', new_string: '"b"' })?.kind, 'ask');                                                  // change
+    assert.equal(edit('Edit', { old_string: 'test("a"', new_string: 'test("z", () => {});\ntest("a"' })?.kind, 'ask');                 // insertion before, anchor is not the tail
+    assert.equal(edit('Edit', { old_string: 'test("a", () => {});', new_string: 'test("a", () => {});\n// x', replace_all: true })?.kind, 'ask');
+    assert.equal(edit('Edit', { old_string: 'test("a", () => {});', new_string: '' })?.kind, 'ask');                                    // deletion
+    assert.equal(edit('Write', { content: body + 'test("b", () => {});\n' }), null);
+    assert.equal(edit('Write', { content: 'test("b", () => {});\n' })?.kind, 'ask');
+    assert.equal(edit('MultiEdit', { edits: [
+      { old_string: 'test("a", () => {});', new_string: 'test("a", () => {});\ntest("b", () => {});' },
+      { old_string: 'test("b", () => {});', new_string: 'test("b", () => {});\ntest("c", () => {});' },
+    ] }), null);
+    assert.equal(edit('MultiEdit', { edits: [{ old_string: '"a"', new_string: '"b"' }] })?.kind, 'ask');
+    assert.equal(edit('Edit', {})?.kind, 'ask');                                                                                        // no strings: unknown change
+    const bash = (command) => evaluate(ctx(p, 'Bash', { command }));
+    assert.equal(bash('echo x >> x.test.ts'), null);
+    assert.equal(bash("cat >> x.test.ts <<'EOF'\ntest('c', () => {});\nEOF"), null);
+    assert.equal(bash('echo x > x.test.ts')?.kind, 'ask');
+    const off = mergeConfig(cfg, { guards: { test: { allowAppend: false } } });
+    assert.equal(edit('Edit', { old_string: body, new_string: body + 'test("b", () => {});\n' }, off)?.kind, 'ask');
+    assert.equal(evaluate({ ...ctx(p, 'Bash', { command: 'echo x >> x.test.ts' }), config: off })?.kind, 'ask');
   } finally { p.cleanup(); }
 });
