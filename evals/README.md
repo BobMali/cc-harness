@@ -29,7 +29,7 @@ The shipped corpus holds the adversarial set (`ts`) and a mined set (`go`, `none
 
 Append a line to `evals/corpus/adversarial/<guard>.jsonl`. Compute the id with `vectorId(lang, event, tool, input, fixtureExists)` from `evals/lib/corpus.mjs`. Set `expected` from the spec. If the current code gets it wrong and the gap is accepted for now, add `"known_gap": true`; the runner reports it without failing, and fails once the gap closes so the flag gets removed.
 
-A vector for a tool call with a missing `file_path` is unrepresentable in this format (`validateVector` requires a string); that guard branch is covered by unit tests only.
+A tool call with no `file_path` is written as `"file_path": null`; the runner then sends an empty `tool_input`, which is what the guards see for such a call.
 
 ## Known gaps
 

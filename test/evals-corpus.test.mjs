@@ -86,3 +86,10 @@ test('I5: writeJsonl writes atomically and leaves no .tmp sibling', () => {
     assert.equal(fs.existsSync(`${f}.tmp`), false);
   } finally { d.cleanup(); }
 });
+
+test('T4: an edit-tool vector may carry file_path: null to represent a missing path; a non-string is still rejected', () => {
+  const v = { id: 'ts-abcdef', lang: 'ts', event: 'PreToolUse', tool: 'Edit', input: { file_path: null }, expected: { kind: 'pass' }, source: 'adversarial' };
+  assert.deepEqual(validateVector(v), []);
+  assert.ok(validateVector({ ...v, input: { file_path: 3 } }).some((e) => /file_path/.test(e)));
+  assert.equal(normalisePayload('Edit', { file_path: null }), '');
+});

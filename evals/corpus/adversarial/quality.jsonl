@@ -7,3 +7,4 @@
 {"id":"ts-1d0f67","lang":"ts","event":"PostToolUse","tool":"Edit","input":{"file_path":"dist/a.js"},"fixture":{"exists":["dist/a.js"]},"source":"adversarial","expected":{"kind":"pass"},"note":"ignored build dir"}
 {"id":"ts-c53543","lang":"ts","event":"PostToolUse","tool":"Edit","input":{"file_path":"../outside.ts"},"source":"adversarial","expected":{"kind":"pass"},"note":"path outside the project is out of scope"}
 {"id":"ts-117abf","lang":"ts","event":"PostToolUse","tool":"Write","input":{"file_path":"/etc/outside.ts"},"source":"adversarial","expected":{"kind":"pass"},"note":"absolute path outside the project"}
+{"id":"ts-bd9b4d","lang":"ts","event":"PostToolUse","tool":"Write","input":{"file_path":null},"source":"adversarial","expected":{"kind":"pass"},"note":"write tool call without a file_path"}

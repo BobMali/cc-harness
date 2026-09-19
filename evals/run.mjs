@@ -101,7 +101,7 @@ export function evaluateVector(vector, project, dataDir) {
   try {
     const toolInput = vector.tool === 'Bash'
       ? { command: vector.input.command }
-      : { file_path: resolveFilePath(project.dir, vector.input.file_path) };
+      : vector.input.file_path === null ? {} : { file_path: resolveFilePath(project.dir, vector.input.file_path) };   // null: the tool call had no path
     const input = { hook_event_name: vector.event, tool_name: vector.tool, tool_input: toolInput, session_id: 'eval', cwd: project.dir };
     const ctx = { event: vector.event, input, config: project.config, projectDir: project.dir, dataDir, pluginRoot: pluginRoot(), exec: vector.event === 'PostToolUse' ? FAIL_EXEC : STUB_EXEC, fs, now: () => Date.now() };
     const crashed = [];
@@ -158,7 +158,7 @@ export function sampleViaCli(results, projects, { sample, dataDir, rng = Math.ra
     const created = [];
     for (const rel of v.fixture?.exists ?? []) { const abs = resolveFilePath(cliDir, rel); if (inside(cliDir, abs) && writeEmpty(abs)) created.push(abs); }
     try {
-      const toolInput = v.tool === 'Bash' ? { command: v.input.command } : { file_path: resolveFilePath(cliDir, v.input.file_path) };
+      const toolInput = v.tool === 'Bash' ? { command: v.input.command } : v.input.file_path === null ? {} : { file_path: resolveFilePath(cliDir, v.input.file_path) };
       const input = JSON.stringify({ hook_event_name: v.event, tool_name: v.tool, tool_input: toolInput, session_id: 'eval-cli', cwd: cliDir });
       const p = spawnSync(process.execPath, [BIN, 'hook', v.event], { input, encoding: 'utf8', timeout: 30_000, env: { ...process.env, CLAUDE_PROJECT_DIR: cliDir, CLAUDE_PLUGIN_DATA: dataDir, ...cliEnv } });
       if (p.error || p.status !== 0) { mismatches.push({ id: v.id, inProcess: r.actual.kind, viaCli: p.error?.code ?? `exit ${p.status}` }); continue; }

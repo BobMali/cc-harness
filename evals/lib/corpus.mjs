@@ -62,7 +62,7 @@ export function validateVector(v) {
   if (!TOOLS.includes(v.tool)) e.push(`tool "${v.tool}" must be one of ${TOOLS.join(' ')}`);
   if (!v.input || typeof v.input !== 'object') e.push('input must be an object');
   else if (v.tool === 'Bash' && typeof v.input.command !== 'string') e.push('input.command must be a string for Bash');
-  else if (v.tool !== 'Bash' && typeof v.input.file_path !== 'string') e.push('input.file_path must be a string for edit tools');
+  else if (v.tool !== 'Bash' && typeof v.input.file_path !== 'string' && v.input.file_path !== null) e.push('input.file_path must be a string (or null for a missing path) for edit tools');
   if (v.expected !== null && v.expected !== undefined) {
     if (typeof v.expected !== 'object') e.push('expected must be null or an object');
     else if (!KINDS.includes(v.expected.kind)) e.push(`expected.kind "${v.expected.kind}" must be one of ${KINDS.join(' ')}`);

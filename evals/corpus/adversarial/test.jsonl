@@ -39,3 +39,4 @@
 {"id":"ts-537b6d","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"npm --prefix packages/app run lint:fix src/a.test.ts"},"source":"adversarial","expected":{"kind":"ask","guard":"test"},"note":"npm --prefix then an unknown script"}
 {"id":"ts-3e21ce","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"pnpm exec npx vitest run src/a.test.ts"},"source":"adversarial","expected":{"kind":"pass"},"note":"nested wrappers"}
 {"id":"ts-f3cd65","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"sed -n '/x/w src/b.test.ts' src/a.ts"},"source":"adversarial","expected":{"kind":"ask","guard":"test"},"note":"sed w command writes a test file without -i"}
+{"id":"ts-dade89","lang":"ts","event":"PreToolUse","tool":"Edit","input":{"file_path":null},"source":"adversarial","expected":{"kind":"pass"},"note":"edit tool call without a file_path"}
