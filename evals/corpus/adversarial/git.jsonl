@@ -49,3 +49,7 @@
 {"id":"ts-e90953","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"echo feature | xargs git branch -D"},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"xargs prefix in a pipeline"}
 {"id":"ts-fb8c8c","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"eval \"git reset --hard\""},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"eval body is inspected"}
 {"id":"ts-7fb881","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"timeout 5 echo git reset --hard"},"source":"adversarial","expected":{"kind":"pass"},"note":"near miss behind a prefix"}
+{"id":"ts-aa973e","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"G=git; $G reset --hard"},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"same-command variable at the tool position"}
+{"id":"ts-8c7388","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"$(which git) push -f"},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"which-substitution at the tool position"}
+{"id":"ts-0217c0","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"G=git; $G status"},"source":"adversarial","expected":{"kind":"pass"},"note":"near miss: resolved variable, safe subcommand"}
+{"id":"ts-e977a1","lang":"ts","event":"PreToolUse","tool":"Bash","input":{"command":"G=\"git reset --hard\"; $G"},"source":"adversarial","expected":{"kind":"ask","guard":"git"},"note":"quoted multi-word assignment at the tool position"}

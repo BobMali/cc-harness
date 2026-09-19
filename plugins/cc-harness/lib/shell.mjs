@@ -195,14 +195,34 @@ export function shellBody(tokens) {
   return null;
 }
 
-// splitSegments plus, after every `sh -c <string>` segment, the segments of that string
-// (recursively, so nested wrappers unwind too). The wrapper segment itself is kept.
-export function flattenSegments(cmdline) {
+// A segment that is only a simple assignment (`G=git`, `export G="git reset --hard"`): a
+// literal value with no expansion or metacharacters (quoted values may hold spaces, since an
+// unquoted `$G` word-splits). Anything else is not tracked; the real environment is never read.
+const SIMPLE_ASSIGN = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(?:"([^"$`\\]*)"|'([^'$`]*)'|([^\s"'$`;&|<>(){}]*))$/;
+const WHICH_SUB = /\$\((?:which|command -v|type -P)\s+([A-Za-z0-9_./-]+)\)|`which\s+([A-Za-z0-9_./-]+)`/g;
+const LEADING_VAR = /^\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))(?=\s|$)/;
+
+// `$(which git)` becomes `git`; a leading `$G` / `${G}` becomes the value of a simple
+// assignment seen earlier in the same command. Unknown variables stay opaque.
+function resolveLeading(seg, vars) {
+  let s = seg.replace(WHICH_SUB, (_, a, b) => a ?? b);
+  const m = LEADING_VAR.exec(s);
+  if (m) { const name = m[1] ?? m[2]; if (vars.has(name)) s = vars.get(name) + s.slice(m[0].length); }
+  return s;
+}
+
+// splitSegments plus, after every `sh -c <string>` / `eval` segment, the segments of that
+// string (recursively, so nested wrappers unwind too). The wrapper segment itself is kept.
+// Simple same-command assignments and `$(which X)` are resolved at the tool position first.
+export function flattenSegments(cmdline, vars = new Map()) {
   const out = [];
-  for (const seg of splitSegments(cmdline)) {
+  for (const raw of splitSegments(cmdline)) {
+    const seg = resolveLeading(raw, vars);
     out.push(seg);
+    const m = SIMPLE_ASSIGN.exec(raw);
+    if (m) { const val = m[2] ?? m[3] ?? m[4] ?? ''; if (val) vars.set(m[1], val); else vars.delete(m[1]); continue; }
     const body = shellBody(tokenize(seg));
-    if (body) out.push(...flattenSegments(body));
+    if (body) out.push(...flattenSegments(body, vars));
   }
   return out;
 }
