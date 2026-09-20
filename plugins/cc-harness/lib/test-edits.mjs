@@ -22,15 +22,17 @@ export function isAppend(tool, ti, current) {
 
 // Languages whose test files are a sequence of top-level blocks the guard can recognise.
 const LANGS = [
-  { ext: /\.[cm]?[jt]sx?$/, start: /^(?:test|it|describe|context|suite)(?:\.\w+)*\s*\(/, close: /^\}\)?;?\s*$/, neutral: /^(?:\/\/.*|\/\*.*\*\/|import\b.*|\)|\];?|\};?)$/ },
+  { ext: /\.[cm]?[jt]sx?$/, start: /^(?:test|it|describe|context|suite)(?:\.\w+)*\s*\(/, group: /^(?:describe|context|suite)(?:\.\w+)*\s*\(/, close: /^\}\)?;?\s*$/, neutral: /^(?:\/\/.*|\/\*.*\*\/|import\b.*|\)|\];?|\};?)$/ },
   { ext: /\.go$/, start: /^func (?:Test|Benchmark|Example|Fuzz)\w*\s*\(/, close: /^\}\s*$/, neutral: /^(?:\/\/.*|import\b.*|package\b.*|\)|\})$/ },
 ];
 
-// True when every Edit/MultiEdit step only adds one or more complete top-level test blocks at a
-// block boundary of a JS/TS or Go test file: the anchor is unique, the added text sits on its own
-// lines next to a closing brace, an import, a comment, or the file start, begins with a test
-// block opener, ends with a block close, is brace- and paren-balanced outside strings and
-// comments, and has no other column-0 code. Writes and other languages are never block insertions.
+// True when every Edit/MultiEdit step only adds one or more complete test blocks at a block
+// boundary of a JS/TS or Go test file: the anchor is unique, the added text sits on its own lines,
+// the line before the insertion point is a closed block, a neutral line, the file start, or (JS)
+// a group opener such as `describe(`, the added blocks share that line's indentation (or sit
+// deeper, after a group opener), begin with a test block opener, end with a block close, are
+// brace- and paren-balanced outside strings and comments, and contain no other code at the block
+// level. Writes and other languages are never block insertions.
 export function isBlockInsertion(filePath, current, edits) {
   const lang = LANGS.find((l) => l.ext.test(String(filePath)));
   if (!lang || !Array.isArray(edits) || !edits.length) return false;
@@ -40,33 +42,59 @@ export function isBlockInsertion(filePath, current, edits) {
     const idx = text.indexOf(e.old_string);
     if (idx === -1 || text.indexOf(e.old_string, idx + 1) !== -1) return false;
     let added; let at;
-    if (e.new_string.startsWith(e.old_string)) { added = e.new_string.slice(e.old_string.length); at = idx + e.old_string.length; if (!added.startsWith('\n')) return false; }
-    else if (e.new_string.endsWith(e.old_string)) { added = e.new_string.slice(0, -e.old_string.length); at = idx; if (!added.endsWith('\n')) return false; }
-    else return false;
-    if (!atBoundary(text, at, lang) || !wholeBlocks(added, lang)) return false;
+    if (e.new_string.startsWith(e.old_string)) {
+      added = e.new_string.slice(e.old_string.length); at = idx + e.old_string.length;
+      if (!added.startsWith('\n')) return false;
+    } else if (e.new_string.endsWith(e.old_string)) {
+      added = e.new_string.slice(0, -e.old_string.length); at = idx;
+      // the anchor may start after its line's indentation; the added text then ends with "\n" + that indentation
+      const lineStart = text.lastIndexOf('\n', at - 1) + 1;
+      const lead = text.slice(lineStart, at);
+      if (/\S/.test(lead) || !added.endsWith('\n' + lead)) return false;
+      added = added.slice(0, added.length - lead.length);
+      at = lineStart;
+    } else return false;
+    const ctx = boundary(text, at, lang);
+    if (!ctx || !wholeBlocks(added, lang, ctx)) return false;
     text = text.slice(0, idx) + e.new_string + text.slice(idx + e.old_string.length);
   }
   return true;
 }
 
-function atBoundary(text, at, lang) {
+// What the line before the insertion point allows: after a closed block, a neutral line, or the
+// file start, added blocks share its indentation; right after a group opener they must be deeper.
+function boundary(text, at, lang) {
   const before = text.slice(0, at);
   const after = text.slice(at);
-  if (before !== '' && !before.endsWith('\n') && !after.startsWith('\n') && after !== '') return false;
+  if (before !== '' && !before.endsWith('\n') && !after.startsWith('\n') && after !== '') return null;
+  if (before.trim() === '') return { indent: '', deeper: false };
   const lines = before.trimEnd().split('\n');
-  const last = lines[lines.length - 1].trimEnd();
-  // a complete one-line block (`test("a", () => {});`) is a boundary too; an unclosed opener is not
-  return before.trim() === '' || lang.close.test(last) || lang.neutral.test(last) || (lang.start.test(last) && balanced(last));
+  const raw = lines[lines.length - 1];
+  const indent = raw.match(/^\s*/)[0];
+  const last = raw.trim();
+  if (lang.close.test(last) || lang.neutral.test(last) || (lang.start.test(last) && balanced(last))) return { indent, deeper: false };
+  if (lang.group && lang.group.test(last) && !balanced(last)) return { indent, deeper: true };
+  return null;
 }
 
-function wholeBlocks(added, lang) {
-  const lines = added.replace(/^\n+/, '').replace(/\s+$/, '').split('\n');
+function wholeBlocks(added, lang, { indent, deeper }) {
+  const rawLines = added.replace(/^\n+/, '').replace(/\s+$/, '').split('\n');
+  const nonBlank = rawLines.filter((l) => l.trim());
+  if (!nonBlank.length) return false;
+  let base = indent;
+  if (deeper) { base = nonBlank[0].match(/^\s*/)[0]; if (base.length <= indent.length || !base.startsWith(indent)) return false; }
+  const lines = [];
+  for (const l of rawLines) {
+    if (!l.trim()) { lines.push(''); continue; }
+    if (!l.startsWith(base)) return false;
+    lines.push(l.slice(base.length));
+  }
   let i = 0;
-  while (i < lines.length && (/^\s*$/.test(lines[i]) || /^\s*\/\//.test(lines[i]))) i++;
+  while (i < lines.length && (lines[i] === '' || /^\s*\/\//.test(lines[i]))) i++;
   const last = lines[lines.length - 1];
   if (i >= lines.length || !lang.start.test(lines[i]) || !(lang.close.test(last) || (lang.start.test(last) && balanced(last)))) return false;   // the last block may be a one-liner
   for (const l of lines) {
-    if (/^\S/.test(l) && !lang.start.test(l) && !lang.close.test(l) && !/^\/\//.test(l)) return false;   // other column-0 code
+    if (/^\S/.test(l) && !lang.start.test(l) && !lang.close.test(l) && !/^\/\//.test(l)) return false;   // other code at the block level
   }
   return balanced(added);
 }

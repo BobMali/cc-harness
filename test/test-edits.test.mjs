@@ -29,3 +29,18 @@ test('isAppend and affectsOtherTests moved here keep their behaviour', () => {
   assert.equal(affectsOtherTests('test.only("x", () => {});'), 'test.only(');
   assert.equal(affectsOtherTests('test("only once", () => {});'), null);
 });
+
+const NESTED = 'import { describe, it } from "vitest";\n\ndescribe("group", () => {\n  it("a", () => {\n    run();\n  });\n\n  it("z", () => {});\n});\n';
+
+test('isBlockInsertion: a test inserted inside a describe group at the group\'s indentation passes', () => {
+  assert.equal(isBlockInsertion('x.test.ts', NESTED, [{ old_string: '  it("a", () => {\n    run();\n  });', new_string: '  it("a", () => {\n    run();\n  });\n\n  it("m", () => {\n    run();\n  });' }]), true);
+  assert.equal(isBlockInsertion('x.test.ts', NESTED, [{ old_string: 'describe("group", () => {', new_string: 'describe("group", () => {\n  it("first", () => {});\n' }]), true);   // first child after the group opener
+  assert.equal(isBlockInsertion('x.test.ts', NESTED, [{ old_string: '  it("z", () => {});', new_string: '  it("m", () => {});\n\n  it("z", () => {});' }]), true);          // before a sibling, anchor starts after the indentation
+  assert.equal(isBlockInsertion('x.test.ts', NESTED, [{ old_string: '  it("z", () => {});\n});', new_string: '  it("z", () => {});\n});\n\ndescribe("other", () => {\n  it("b", () => {});\n});' }]), true);   // a whole nested group at top level
+});
+
+test('isBlockInsertion: nested insertions that break the indentation or land inside a test still ask', () => {
+  assert.equal(isBlockInsertion('x.test.ts', NESTED, [{ old_string: '  it("a", () => {\n    run();\n  });', new_string: '  it("a", () => {\n    run();\n  });\n\nit("m", () => {});' }]), false);   // column 0 inside the group
+  assert.equal(isBlockInsertion('x.test.ts', NESTED, [{ old_string: '    run();', new_string: '    run();\n    it("m", () => {});' }]), false);                                            // inside a test body
+  assert.equal(isBlockInsertion('x.test.ts', NESTED, [{ old_string: '  it("a", () => {', new_string: '  it("a", () => {\n    it("m", () => {});' }]), false);                              // after a test opener, not a group opener
+});
