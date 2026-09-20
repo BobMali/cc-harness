@@ -366,3 +366,15 @@ test('item 6: envelopeKind treats malformed CLI stdout as an envelope mismatch, 
     assert.equal(r.exitCode, 1);
   } finally { c.cleanup(); scriptDir.cleanup(); }
 });
+
+test('an armed quality gate blocks in-process even when the config has no checks, matching the --via cli project', () => {
+  const p = makeLangProject('none', CONFIGS);
+  const d = makeDataDir();
+  try {
+    const v = { id: 'none-abcdef', lang: 'none', event: 'PostToolUse', tool: 'Write', input: { file_path: 'src/a.test.ts' }, expected: null, source: 'mined' };
+    const actual = evaluateVector(v, p, d.dir);
+    assert.equal(actual.kind, 'block', JSON.stringify(actual));
+    assert.equal(actual.guard, 'quality');
+    assert.equal(evaluateVector({ ...v, input: { file_path: 'notes.md' } }, p, d.dir).kind, 'pass');   // not a source or test file: never armed
+  } finally { p.cleanup(); d.cleanup(); }
+});

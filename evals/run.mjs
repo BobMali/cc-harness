@@ -29,6 +29,15 @@ export function makeLangProject(lang, configsDir = DEFAULT_CONFIGS) {
     fs.copyFileSync(configFile, path.join(dir, '.claude', 'harness.json'));
     const loaded = loadConfig(dir);
     if (loaded.status !== 'ok') throw new Error(`config ${lang}: ${loaded.status} ${JSON.stringify(loaded.errors ?? [])}`);
+    // Both evaluation paths use the config's globs, commands, and commit settings but replace its
+    // checks with one that fails, so an armed quality gate is observable as a block regardless of
+    // whether the config declares checks (the language-less config declares none). In-process the
+    // exec is stubbed to fail anyway; the CLI project runs this check for real.
+    const evalConfig = {
+      ...loaded.config,
+      checks: [{ name: 'eval-fail', cmd: 'exit 1', fast: true }],
+      guards: { ...loaded.config.guards, stop: { ...loaded.config.guards.stop, checks: ['eval-fail'] } },
+    };
     const marker = loaded.config.project.markerFile || MARKERS[lang];
     if (marker) writeEmpty(path.join(dir, marker));
     fs.mkdirSync(path.join(dir, 'githooks'), { recursive: true });
@@ -48,10 +57,11 @@ export function makeLangProject(lang, configsDir = DEFAULT_CONFIGS) {
         const cliConfig = {
           version: 1,
           preset: 'custom',
-          project: loaded.config.project,
-          commands: loaded.config.commands,
-          checks: [{ name: 'eval-fail', cmd: 'exit 1', fast: true }],
-          guards: { commit: loaded.config.guards.commit, stop: { checks: ['eval-fail'] } },
+          project: evalConfig.project,
+          commands: evalConfig.commands,
+          ci: evalConfig.ci,
+          checks: evalConfig.checks,
+          guards: { commit: evalConfig.guards.commit, test: evalConfig.guards.test, stop: { checks: ['eval-fail'] } },
         };
         fs.writeFileSync(path.join(cd, '.claude', 'harness.json'), JSON.stringify(cliConfig, null, 2));
         const cliLoaded = loadConfig(cd);
@@ -67,7 +77,7 @@ export function makeLangProject(lang, configsDir = DEFAULT_CONFIGS) {
     };
 
     const project = {
-      dir, lang, config: loaded.config,
+      dir, lang, config: evalConfig,
       cleanup: () => { fs.rmSync(dir, { recursive: true, force: true }); if (cliDirBuilt) fs.rmSync(cliDirBuilt, { recursive: true, force: true }); },
     };
     Object.defineProperty(project, 'cliDir', {
