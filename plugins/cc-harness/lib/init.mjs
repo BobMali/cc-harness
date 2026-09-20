@@ -144,8 +144,9 @@ export function planInit(opts) {
   const marketIsRepo = isRepo(opts.marketplace);
   const marketPath = marketIsRepo ? null : path.resolve(process.cwd(), opts.marketplace);
   const marketEntry = { [MARKET]: { source: marketIsRepo ? { source: 'github', repo: opts.marketplace } : { source: 'directory', path: marketPath } } };
-  // The marketplace entry is harness-owned too: the requested source replaces an old one.
-  const own = (settings) => (marketIsRepo ? { ...settings, extraKnownMarketplaces: { ...(settings.extraKnownMarketplaces ?? {}), ...marketEntry } } : settings);
+  // The marketplace entry is harness-owned too: the requested source replaces an old one, and a
+  // switch to a local path (which lives in settings.local.json) removes the repo entry from here.
+  const own = (settings) => (marketIsRepo ? { ...settings, extraKnownMarketplaces: { ...(settings.extraKnownMarketplaces ?? {}), ...marketEntry } } : withoutMarket(settings));
   writes.push(mergeJsonWrite(opts.targetDir, '.claude/settings.json', settingsFragment, { stale: stale ? { permissions: stale } : null, finalize: own, existing: existingSettings }));
   if (!marketIsRepo) {
     writes.push(mergeJsonWrite(opts.targetDir, LOCAL_SETTINGS, {}, { finalize: (settings) => ({ ...settings, extraKnownMarketplaces: { ...(settings.extraKnownMarketplaces ?? {}), ...marketEntry } }) }));
@@ -177,6 +178,16 @@ export function planInit(opts) {
     'restart Claude Code (or /reload) so the plugin hooks load; the session preflight will confirm',
   ];
   return { writes, refusals, checklist };
+}
+
+// Settings without the harness marketplace entry; the map itself goes when it was the only one.
+function withoutMarket(settings) {
+  if (!settings.extraKnownMarketplaces || !(MARKET in settings.extraKnownMarketplaces)) return settings;
+  const rest = { ...settings.extraKnownMarketplaces };
+  delete rest[MARKET];
+  const out = { ...settings };
+  if (Object.keys(rest).length) out.extraKnownMarketplaces = rest; else delete out.extraKnownMarketplaces;
+  return out;
 }
 
 // Entries of `prior` (per allow/ask/deny) that `next` no longer contains.

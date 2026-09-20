@@ -344,3 +344,17 @@ test('T4: entries already in settings before init are not owned, so a later reti
     assert.ok(s.permissions.allow.includes('Bash(biome:*)'));
   } finally { p.cleanup(); }
 });
+
+test('switching --marketplace from a repo to a local path removes the GitHub entry from the shared settings', () => {
+  const p = makeProject({ files: { 'package.json': '{}' } });
+  try {
+    assert.equal(init(base(p.dir), io()), 0);   // acme/cc-harness → settings.json
+    assert.ok(JSON.parse(p.read('.claude/settings.json')).extraKnownMarketplaces['cc-harness']);
+    const local = path.join(p.dir, 'vendor-marketplace'); fs.mkdirSync(local);
+    assert.equal(init(base(p.dir, { force: true, marketplace: local }), io()), 0);
+    const shared = JSON.parse(p.read('.claude/settings.json'));
+    assert.equal(shared.extraKnownMarketplaces, undefined, 'the repo entry is gone and the empty map with it');
+    assert.deepEqual(JSON.parse(p.read('.claude/settings.local.json')).extraKnownMarketplaces['cc-harness'].source, { source: 'directory', path: local });
+    assert.equal(shared.enabledPlugins['cc-harness@cc-harness'], true);   // the rest of the shared file is untouched
+  } finally { p.cleanup(); }
+});
