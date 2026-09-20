@@ -79,6 +79,7 @@ Disable a guard: `"guards": { "git": { "enabled": false } }`. Change the commit 
 | preset | marker | checks |
 |---|---|---|
 | `ts` | `package.json` | tsc, eslint, prettier (fast); vitest or jest (stop gate) |
+| `go` | `go.mod` | gofmt, go vet, golangci-lint when `.golangci.yml` exists (fast); go test (stop gate) |
 | `custom` | none | you write the config |
 
 Writing another preset: [docs/presets.md](docs/presets.md).

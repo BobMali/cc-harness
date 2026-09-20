@@ -34,3 +34,17 @@ test('F1: the commits job excludes merge commits so a PR merge commit is not rej
   const t = fs.readFileSync(path.join(templatesDir(), 'ci.yml.tmpl'), 'utf8');
   assert.match(t, /rev-list --no-merges/);
 });
+
+test('go preset facts the docs rely on', () => {
+  const c = mergeConfig(DEFAULTS, loadPreset('go'));
+  assert.equal(c.project.markerFile, 'go.mod');
+  assert.deepEqual(c.project.sourceGlobs, ['**/*.go']);
+  assert.deepEqual(c.project.testGlobs, ['**/*_test.go']);
+  for (const w of ['go', 'gofmt', 'goimports', 'golangci-lint', 'staticcheck']) assert.ok(c.commands.safe.includes(w), w);
+  assert.deepEqual(c.commands.write.map((w) => `${w.cmd} ${w.whenFlags.join(',')}`), ['gofmt -w', 'goimports -w']);
+  assert.deepEqual(c.checks.map((ch) => `${ch.name}${ch.fast ? '*' : ''}`), ['fmt*', 'vet*', 'lint*', 'test']);
+  assert.equal(c.checks.find((ch) => ch.name === 'lint').ifExists, '.golangci.yml');
+  assert.deepEqual(c.guards.stop.checks, ['vet', 'test']);
+  assert.match(JSON.stringify(c.ci.setupSteps), /actions\/setup-go@v5/);
+  assert.match(JSON.stringify(c.ci.setupSteps), /go-version-file/);
+});

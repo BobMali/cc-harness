@@ -64,4 +64,4 @@ The miner writes only the command (Bash) or the file path (edit tools), the lang
 
 ## Languages
 
-`evals/configs/<lang>.json` is the config each vector is evaluated under. `ts` resolves through the shipped preset; `go`, `php`, `swift` are eval-only configs and a dry run for future presets; `none` is a language-less custom project with generic test globs (`**/*.test.*`, `**/*.spec.*`, `**/*_test.go`, `**/__tests__/**`) and `node` as a safe command, so edits to test files in a project without a recognised marker are still measured by the test guard.
+`evals/configs/<lang>.json` is the config each vector is evaluated under. `ts` and `go` resolve through the shipped presets; `php` and `swift` are eval-only configs and a dry run for future presets; `none` is a language-less custom project with generic test globs (`**/*.test.*`, `**/*.spec.*`, `**/*_test.go`, `**/__tests__/**`) and `node` as a safe command, so edits to test files in a project without a recognised marker are still measured by the test guard.

@@ -1,0 +1,28 @@
+{
+  "project": {
+    "markerFile": "go.mod",
+    "sourceGlobs": ["**/*.go"],
+    "testGlobs": ["**/*_test.go"]
+  },
+  "commands": {
+    "safe": ["go", "gofmt", "goimports", "golangci-lint", "staticcheck", "govulncheck"],
+    "write": [
+      { "cmd": "gofmt", "whenFlags": ["-w"] },
+      { "cmd": "goimports", "whenFlags": ["-w"] }
+    ]
+  },
+  "checks": [
+    { "name": "fmt", "cmd": "out=$(gofmt -l .); [ -z \"$out\" ] || { printf 'needs gofmt:\\n%s\\n' \"$out\"; exit 1; }", "fast": true },
+    { "name": "vet", "cmd": "go vet ./...", "fast": true },
+    { "name": "lint", "cmd": "golangci-lint run", "ifExists": ".golangci.yml", "fast": true },
+    { "name": "test", "cmd": "go test ./..." }
+  ],
+  "guards": {
+    "stop": { "checks": ["vet", "test"] }
+  },
+  "ci": {
+    "setupSteps": [
+      { "uses": "actions/setup-go@v5", "with": { "go-version-file": "go.mod" } }
+    ]
+  }
+}
