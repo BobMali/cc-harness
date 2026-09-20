@@ -8,8 +8,7 @@ Nothing open. The marketplace install was verified on 2026-09-18: `claude plugin
 
 ## Tier 2: wrong behaviour that fails safe or over-asks
 
-- **A test added inside a `describe()` group still asks.** Block-insertion detection anchors its patterns at column 0, so an `it()` inserted inside a nested group (the common vitest and jest layout) is not recognised. Both mined projects use flat top-level tests, so the corpus cannot measure this yet. Next increment: indentation-relative matching, stripping the anchor line's indentation and requiring the added block to share it.
-- **Switching `--marketplace` from a repo to a local path leaves the old GitHub entry in `settings.json`.** The requested source replaces the entry in the file it targets, but a repo-to-path switch targets `settings.local.json` and never revisits the shared file. Fix: drop the `cc-harness` marketplace key from `settings.json` when the new source is local.
+Nothing open. Closed on 2026-09-20: block insertion inside `describe()` groups (indentation-relative matching, with a group opener allowing a deeper first child), and the repo-to-local `--marketplace` switch now removes the GitHub entry from the shared settings.
 
 ## Tier 3: eval-suite coverage and privacy
 
