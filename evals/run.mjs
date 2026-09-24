@@ -100,8 +100,9 @@ const BODY = { existing: '// existing\n', tail: '// tail\n', added: '// added\n'
 const BLOCKS = {
   js: { body: 'test("a", () => {});\n\ntest("z", () => {});\n', anchor: 'test("a", () => {});', added: '\n\ntest("m", () => {});' },
   go: { body: 'package x\n\nfunc TestA(t *testing.T) {}\n\nfunc TestZ(t *testing.T) {}\n', anchor: 'func TestA(t *testing.T) {}', added: '\n\nfunc TestM(t *testing.T) {}' },
+  php: { body: '<?php\n\nfinal class ATest extends TestCase\n{\n    public function testA(): void\n    {\n    }\n\n    public function testZ(): void\n    {\n    }\n}\n', anchor: '    public function testA(): void\n    {\n    }', added: '\n\n    public function testM(): void\n    {\n    }' },
 };
-const blocksFor = (fp) => (/\.go$/.test(fp) ? BLOCKS.go : BLOCKS.js);
+const blocksFor = (fp) => (/\.go$/.test(fp) ? BLOCKS.go : /\.php$/.test(fp) ? BLOCKS.php : BLOCKS.js);
 function fixtureContent(vector, rel) {
   const shape = vector.input?.shape;
   if (!shape || rel !== vector.input.file_path) return '';

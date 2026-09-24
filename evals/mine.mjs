@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { readJsonl, writeJsonl, vectorId, TOOLS } from './lib/corpus.mjs';
 import { redact } from './lib/redact.mjs';
-import { isBlockInsertion } from '../plugins/cc-harness/lib/test-edits.mjs';
+import { isBlockInsertion, insertion } from '../plugins/cc-harness/lib/test-edits.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_FROM = path.join(os.homedir(), '.claude', 'projects');
@@ -104,9 +104,13 @@ export function editShape(use, result) {
   if (use.tool === 'Write') return typeof result.content === 'string' && result.content.startsWith(orig) ? 'append' : 'replace';
   const old = result.oldString; const neu = result.newString;
   if (typeof old !== 'string' || typeof neu !== 'string') return undefined;
-  if (result.replaceAll || !neu.includes(old)) return 'replace';
+  if (result.replaceAll) return 'replace';
   if (old.trim() && neu.startsWith(old) && orig.trimEnd().endsWith(old.trimEnd())) return 'append';
-  return isBlockInsertion(result.filePath ?? use.input.file_path, orig, [{ old_string: old, new_string: neu }]) ? 'insert-block' : 'insert';
+  const edit = { old_string: old, new_string: neu };
+  if (isBlockInsertion(result.filePath ?? use.input.file_path, orig, [edit])) return 'insert-block';
+  // An insertion may split its anchor (the block lands between the anchor's lines), so the test
+  // is whether the edit adds whole lines and leaves every existing line alone, not containment.
+  return insertion(orig, edit) || neu.includes(old) ? 'insert' : 'replace';
 }
 
 export function toVector(use, { cwd, lang, touched, month, project, words = [], result }) {
@@ -301,7 +305,10 @@ export function mine(opts = {}) {
   for (const [lang, fresh] of byLangNew) {
     const file = path.join(out, `${lang}.jsonl`);
     let existing = fsm.existsSync(file) ? readJsonl(file) : [];
-    // A shaped vector supersedes a shapeless row for the same edit (mined before shapes existed).
+    // A shaped vector supersedes a shapeless row for the same edit (mined before shapes existed),
+    // and a more precise shape supersedes a coarser one: insert → insert-block, replace → either
+    // (a split anchor read as replace before the miner understood it), unless the coarser shape
+    // was mined again as well, in which case both edits really happened.
     const keyOf = (v) => `${v.event}|${v.tool}|${v.input.file_path}|${Boolean(v.fixture)}`;
     const freshShapes = new Map();
     for (const v of fresh) if (v.input.shape) { const k = keyOf(v); if (!freshShapes.has(k)) freshShapes.set(k, new Set()); freshShapes.get(k).add(v.input.shape); }
@@ -311,7 +318,10 @@ export function mine(opts = {}) {
       const shapes = freshShapes.get(keyOf(v));
       if (!shapes) return true;
       if (!v.input.shape) return false;                                                            // shapeless row superseded by a shaped one
-      return !(v.input.shape === 'insert' && shapes.has('insert-block') && !shapes.has('insert'));  // plain insert refined to insert-block
+      if (shapes.has(v.input.shape)) return true;
+      if (v.input.shape === 'insert') return !shapes.has('insert-block');
+      if (v.input.shape === 'replace') return !(shapes.has('insert-block') || shapes.has('insert'));
+      return true;
     });
     upgraded += before - existing.length;
     const ids = new Set(existing.map((v) => v.id));

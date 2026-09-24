@@ -378,3 +378,15 @@ test('an armed quality gate blocks in-process even when the config has no checks
     assert.equal(evaluateVector({ ...v, input: { file_path: 'notes.md' } }, p, d.dir).kind, 'pass');   // not a source or test file: never armed
   } finally { p.cleanup(); d.cleanup(); }
 });
+
+test('an insert-block vector is rebuilt on a fixture body in the file\'s own language, so a php method added between methods passes like a js block', () => {
+  const data = makeDataDir();
+  const projects = { ts: makeLangProject('ts', CONFIGS), php: makeLangProject('php', CONFIGS) };
+  try {
+    const shaped = (lang, fp) => ({ lang, event: 'PreToolUse', tool: 'Edit', input: { file_path: fp, shape: 'insert-block' }, fixture: { exists: [fp] } });
+    assert.equal(evaluateVector(shaped('ts', 'src/a.test.ts'), projects.ts, data.dir).kind, 'pass');
+    assert.equal(evaluateVector(shaped('php', 'tests/ATest.php'), projects.php, data.dir).kind, 'pass');
+    const insert = { lang: 'php', event: 'PreToolUse', tool: 'Edit', input: { file_path: 'tests/ATest.php', shape: 'insert' }, fixture: { exists: ['tests/ATest.php'] } };
+    assert.equal(evaluateVector(insert, projects.php, data.dir).kind, 'ask');   // a plain insert is still not a block
+  } finally { projects.ts.cleanup(); projects.php.cleanup(); data.cleanup(); }
+});

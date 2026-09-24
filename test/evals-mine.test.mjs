@@ -478,3 +478,27 @@ test('shape: a whole test block inserted between blocks is insert-block; it supe
     assert.equal(r.upgraded, 1);
   } finally { proj.cleanup(); from.cleanup(); out.cleanup(); }
 });
+
+test('shape: a php method added ahead of the class-closing brace is insert-block and supersedes a replace row; a split anchor around plain lines is insert', () => {
+  const proj = makeProject({ files: { 'composer.json': '{}' } });
+  const from = makeDataDir(); const out = makeDataDir();
+  try {
+    const dir = path.join(from.dir, '-x-app'); fs.mkdirSync(dir);
+    const fp = path.join(proj.dir, 'tests/ATest.php');
+    const orig = '<?php\n\nfinal class ATest extends TestCase\n{\n    public function testA(): void\n    {\n    }\n}\n';
+    const call = (id, input) => JSON.stringify({ type: 'assistant', cwd: proj.dir, timestamp: '2026-09-01T00:00:00Z', message: { content: [{ type: 'tool_use', id, name: 'Edit', input }] } });
+    const result = (id, r) => JSON.stringify({ type: 'user', cwd: proj.dir, timestamp: '2026-09-01T00:00:01Z', message: { content: [{ type: 'tool_result', tool_use_id: id, content: 'ok' }] }, toolUseResult: r });
+    const block = { oldString: '    }\n}', newString: '    }\n\n    public function testM(): void\n    {\n    }\n}', originalFile: orig, replaceAll: false, filePath: fp };
+    const plain = { oldString: '<?php\n\nfinal', newString: '<?php\n\n// note\nfinal', originalFile: orig, replaceAll: false, filePath: fp };
+    fs.writeFileSync(path.join(dir, 's.jsonl'), [
+      call('t1', { file_path: fp, old_string: block.oldString, new_string: block.newString }), result('t1', block),
+      call('t2', { file_path: fp, old_string: plain.oldString, new_string: plain.newString }), result('t2', plain),
+    ].join('\n') + '\n');
+    const stale = { id: vectorId('php', 'PreToolUse', 'Edit', { file_path: 'tests/ATest.php', shape: 'replace' }, true), lang: 'php', event: 'PreToolUse', tool: 'Edit', input: { file_path: 'tests/ATest.php', shape: 'replace' }, fixture: { exists: ['tests/ATest.php'] }, expected: { kind: 'ask', guard: 'test' }, source: 'mined', note: 'app 2026-08' };
+    fs.writeFileSync(path.join(out.dir, 'php.jsonl'), JSON.stringify(stale) + '\n');
+    const r = mine({ from: from.dir, out: out.dir, log: () => {} });
+    const rows = readJsonl(path.join(out.dir, 'php.jsonl')).filter((v) => v.event === 'PreToolUse');
+    assert.deepEqual(rows.map((v) => v.input.shape).sort(), ['insert', 'insert-block']);
+    assert.equal(r.upgraded, 1);   // the replace row mined before split anchors were understood
+  } finally { proj.cleanup(); from.cleanup(); out.cleanup(); }
+});
