@@ -4,7 +4,7 @@ An offline corpus of tool payloads evaluated through the production guard path. 
 
 ## Run
 
-The shipped corpus holds the adversarial set (`ts`) and a mined set (`go`, `none`); `--lang php` and `--lang swift` have no vectors until a project of that language is mined.
+The shipped corpus holds the adversarial set (`ts`) and mined sets (`go`, `none`, `php`); `--lang swift` has no vectors until a project of that language is mined.
 
     node evals/run.mjs                      # everything; exit 0 clean, 1 mismatch, 2 unlabelled vectors
     node evals/run.mjs --lang ts,go         # filter by language
