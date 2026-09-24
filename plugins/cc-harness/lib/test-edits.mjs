@@ -20,14 +20,24 @@ export function isAppend(tool, ti, current) {
   return true;
 }
 
-// Languages whose test files are a sequence of top-level blocks the guard can recognise.
+// Languages whose test files are a sequence of blocks the guard can recognise: top-level test
+// functions (JS/TS, Go), or (PHP) methods of a test class, where the class body is the group,
+// its opener is the column-0 `{` (groupRaw), every block sits inside it (nested), a block may be
+// led by attributes or a docblock (prelude) and carry its own `{` line (level), and a signature
+// line only closes a block when the body is on that line too (oneLiner).
 const LANGS = [
   { ext: /\.[cm]?[jt]sx?$/, start: /^(?:test|it|describe|context|suite)(?:\.\w+)*\s*\(/, group: /^(?:describe|context|suite)(?:\.\w+)*\s*\(/, close: /^\}\)?;?\s*$/, neutral: /^(?:\/\/.*|\/\*.*\*\/|import\b.*|\)|\];?|\};?)$/ },
   { ext: /\.go$/, start: /^func (?:Test|Benchmark|Example|Fuzz)\w*\s*\(/, close: /^\}\s*$/, neutral: /^(?:\/\/.*|import\b.*|package\b.*|\)|\})$/ },
+  { ext: /\.php$/, start: /^(?:(?:public|protected|private|static|final|abstract)\s+)*function\s+\w+\s*\(/, group: /^\{\s*$/, groupRaw: true, nested: true, close: /^\}\s*$/, neutral: /^\/\/.*$/, prelude: /^(?:#\[.*\]|\/\*\*.*|\s*\*.*)$/, level: /^(?:\{|#\[.*\]|\/\*\*.*|\*\/)$/, oneLiner: /\{.*\}\s*$/ },
 ];
 
+// A block opened and closed on one line, such as `it("x", () => {});` or `func TestA(t *testing.T) {}`.
+function closedOnOneLine(line, lang) {
+  return lang.start.test(line) && balanced(line) && (!lang.oneLiner || lang.oneLiner.test(line));
+}
+
 // True when every Edit/MultiEdit step only adds one or more complete test blocks at a block
-// boundary of a JS/TS or Go test file: the anchor is unique, the step adds whole lines at one
+// boundary of a JS/TS, Go, or PHP test file: the anchor is unique, the step adds whole lines at one
 // point and changes no existing line, the line before the insertion point is a closed block, a
 // neutral line, the file start, or (JS) a group opener such as `describe(`, the added blocks
 // share that line's indentation (or sit deeper, after a group opener), begin with a test block
@@ -41,7 +51,7 @@ export function isBlockInsertion(filePath, current, edits) {
     const ins = insertion(text, e);
     if (!ins) return false;
     const ctx = boundary(text, ins.at, lang);
-    if (!ctx || !wholeBlocks(ins.added, lang, ctx)) return false;
+    if (!ctx || (lang.nested && !ctx.indent && !ctx.deeper) || !wholeBlocks(ins.added, lang, ctx)) return false;
     text = ins.after;
   }
   return true;
@@ -79,8 +89,8 @@ function boundary(text, at, lang) {
   const raw = lines[lines.length - 1];
   const indent = raw.match(/^\s*/)[0];
   const last = raw.trim();
-  if (lang.close.test(last) || lang.neutral.test(last) || (lang.start.test(last) && balanced(last))) return { indent, deeper: false };
-  if (lang.group && lang.group.test(last) && !balanced(last)) return { indent, deeper: true };
+  if (lang.close.test(last) || lang.neutral.test(last) || closedOnOneLine(last, lang)) return { indent, deeper: false };
+  if (lang.group && lang.group.test(lang.groupRaw ? raw : last) && !balanced(last)) return { indent, deeper: true };
   return null;
 }
 
@@ -97,11 +107,11 @@ function wholeBlocks(added, lang, { indent, deeper }) {
     lines.push(l.slice(base.length));
   }
   let i = 0;
-  while (i < lines.length && (lines[i] === '' || /^\s*\/\//.test(lines[i]))) i++;
+  while (i < lines.length && (lines[i] === '' || /^\s*\/\//.test(lines[i]) || (lang.prelude && lang.prelude.test(lines[i])))) i++;
   const last = lines[lines.length - 1];
-  if (i >= lines.length || !lang.start.test(lines[i]) || !(lang.close.test(last) || (lang.start.test(last) && balanced(last)))) return false;   // the last block may be a one-liner
+  if (i >= lines.length || !lang.start.test(lines[i]) || !(lang.close.test(last) || closedOnOneLine(last, lang))) return false;   // the last block may be a one-liner
   for (const l of lines) {
-    if (/^\S/.test(l) && !lang.start.test(l) && !lang.close.test(l) && !/^\/\//.test(l)) return false;   // other code at the block level
+    if (/^\S/.test(l) && !lang.start.test(l) && !lang.close.test(l) && !/^\/\//.test(l) && !(lang.level && lang.level.test(l))) return false;   // other code at the block level
   }
   return balanced(added);
 }
@@ -139,6 +149,8 @@ const OTHER_TEST_MARKERS = [
   /\b(?:test|it|describe|context|suite)\.only\s*\(/, /\b(?:fit|fdescribe|fcontext|ftest)\s*\(/,
   /^\s*(?:beforeAll|beforeEach|afterAll|afterEach|before|after|setup|teardown)\s*\(/m,
   /\bfunc TestMain\s*\(/, /\bautouse\s*=\s*True\b/, /@pytest\.fixture\s*\([^)]*scope\s*=\s*["'](?:module|session)/,
+  /\bfunction\s+(?:setUp|tearDown|setUpBeforeClass|tearDownAfterClass|assertPreConditions|assertPostConditions)\s*\(/,   // PHPUnit template methods
+  /#\[(?:Before|After|BeforeClass|AfterClass|PreCondition|PostCondition)\b/, /@(?:before|after|beforeClass|afterClass|preCondition|postCondition)\b/,
 ];
 export function affectsOtherTests(text) {
   for (const re of OTHER_TEST_MARKERS) { const m = re.exec(text); if (m) return m[0].trim(); }

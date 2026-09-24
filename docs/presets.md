@@ -44,7 +44,7 @@ Ordered, named commands run via `/bin/sh -c` with the project root as cwd.
 
 ## guards
 
-`guards.test.allowAppend` (default `true`) lets an edit that only adds text after the end of an existing test file pass without a prompt: a Write whose content starts with the current content, an Edit or MultiEdit whose `old_string` is the file's tail and whose `new_string` starts with it, or a `>>` redirect; and, for JS/TS and Go files, an Edit or MultiEdit that only inserts complete test blocks (`test(`, `it(`, `describe(`, `func TestX`) at a block boundary, at the boundary line's indentation or, right after a `describe()` opener, one level deeper. An added focus marker or file-level hook still prompts. Set it to `false` to prompt on every edit to an existing test file.
+`guards.test.allowAppend` (default `true`) lets an edit that only adds text after the end of an existing test file pass without a prompt: a Write whose content starts with the current content, an Edit or MultiEdit whose `old_string` is the file's tail and whose `new_string` starts with it, or a `>>` redirect; and, for JS/TS, Go, and PHP files, an Edit or MultiEdit that only inserts complete test blocks (`test(`, `it(`, `describe(`, `func TestX`, a method of a PHP test class) at a block boundary, at the boundary line's indentation or, right after a `describe()` opener, one level deeper. An added focus marker or file-level hook still prompts. Set it to `false` to prompt on every edit to an existing test file.
 
 Each guard has `enabled`. Extra keys: `commit.regexFile`, `commit.rejectAttributionTrailers`, `quality.scope` (`fast` or `all`), `stop.checks` (names), `stop.maxBlocks` (0–7).
 

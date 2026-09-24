@@ -52,3 +52,28 @@ test('isBlockInsertion: an anchor that spans the last block and the closing line
   assert.equal(isBlockInsertion('x.test.ts', NESTED, [{ old_string: '  it("z", () => {});\n});', new_string: '  it("z", () => {});\n\n  it("m", () => {});\n});\n' }]), false);   // the closing line changes too
   assert.equal(isBlockInsertion('x.test.ts', NESTED, [{ old_string: '  it("z", () => {});\n});', new_string: '  it("z", () => {}); // note\n\n  it("m", () => {});\n});' }]), false);   // the anchor line itself changes
 });
+
+const PHP = '<?php\n\ndeclare(strict_types=1);\n\nnamespace App\\Tests;\n\nuse PHPUnit\\Framework\\TestCase;\n\nfinal class ArsTest extends TestCase\n{\n    public function testA(): void\n    {\n        $this->assertSame(\'}\', "}");\n    }\n\n    #[Test]\n    public function withAttribute(): void\n    {\n    }\n}\n';
+
+test('isBlockInsertion: a whole method added inside a PHP test class passes: before the class close, between methods, after the class opener', () => {
+  assert.equal(isBlockInsertion('ArsTest.php', PHP, [{ old_string: '    }\n}', new_string: '    }\n\n    public function testM(): void\n    {\n        $this->assertSame(1, 1);\n    }\n}' }]), true);   // ahead of the class-closing brace
+  assert.equal(isBlockInsertion('ArsTest.php', PHP, [{ old_string: '    #[Test]\n    public function withAttribute(): void', new_string: '    /**\n     * @test\n     */\n    public function documented(): void\n    {\n    }\n\n    #[Test]\n    public function withAttribute(): void' }]), true);   // docblock-led method between methods
+  assert.equal(isBlockInsertion('ArsTest.php', PHP, [{ old_string: 'final class ArsTest extends TestCase\n{', new_string: 'final class ArsTest extends TestCase\n{\n    #[DataProvider(\'cases\')]\n    public function testFirst(int $n): void\n    {\n    }\n' }]), true);   // first method after the class opener
+  assert.equal(isBlockInsertion('ArsTest.php', PHP, [{ old_string: '    }\n}', new_string: '    }\n\n    public static function cases(): iterable\n    {\n        yield [1];\n    }\n}' }]), true);   // a helper such as a data provider is a whole method too
+});
+
+test('isBlockInsertion: PHP insertions inside a method, between a signature and its brace, outside the class, or between an attribute and its method still ask', () => {
+  assert.equal(isBlockInsertion('ArsTest.php', PHP, [{ old_string: '    public function testA(): void\n    {', new_string: '    public function testA(): void\n    {\n        public function testM(): void\n        {\n        }' }]), false);   // a method\'s own brace is not a group opener
+  assert.equal(isBlockInsertion('ArsTest.php', PHP, [{ old_string: '    public function testA(): void', new_string: '    public function testA(): void\n    {\n    }\n\n    public function testM(): void' }]), false);   // a balanced signature line is not a closed block
+  assert.equal(isBlockInsertion('ArsTest.php', PHP, [{ old_string: '    }\n}', new_string: '    }\n}\n\nfunction testX(): void\n{\n}' }]), false);   // outside the class
+  assert.equal(isBlockInsertion('ArsTest.php', PHP, [{ old_string: '    public function withAttribute(): void', new_string: '    public function testM(): void\n    {\n    }\n\n    public function withAttribute(): void' }]), false);   // splits #[Test] from its method
+  assert.equal(isBlockInsertion('ArsTest.php', PHP, [{ old_string: '    }\n}', new_string: '    }\n\n    public function testM(): void\n    {\n}' }]), false);   // unbalanced
+});
+
+test('affectsOtherTests: PHPUnit fixture hooks and attributes count as markers', () => {
+  assert.equal(affectsOtherTests('    protected function setUp(): void\n    {\n    }'), 'function setUp(');
+  assert.equal(affectsOtherTests('    public static function tearDownAfterClass(): void {}'), 'function tearDownAfterClass(');
+  assert.equal(affectsOtherTests('    #[Before]\n    public function prime(): void {}'), '#[Before');
+  assert.equal(affectsOtherTests('    /** @after */\n    public function clean(): void {}'), '@after');
+  assert.equal(affectsOtherTests('    public function testSetUpIsNotAHook(): void {}'), null);
+});
