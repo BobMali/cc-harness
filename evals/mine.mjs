@@ -96,21 +96,36 @@ function relOrAbs(cwd, p) {
 
 // How an edit related to the existing file, from the tool result Claude Code records next to
 // the call (oldString/newString/content plus the originalFile). undefined when the result is
-// missing or the file was new. Mirrors the test guard's append rule.
+// missing or the file was new. Mirrors the test guard's append rule. Claude Code sometimes
+// records an Edit result with originalFile null; the two strings alone still tell replace from
+// insert, only append and insert-block need the file around the anchor.
 export function editShape(use, result) {
   if (use.tool === 'Bash' || !result || typeof result !== 'object') return undefined;
   const orig = result.originalFile;
-  if (typeof orig !== 'string') return undefined;
-  if (use.tool === 'Write') return typeof result.content === 'string' && result.content.startsWith(orig) ? 'append' : 'replace';
+  if (use.tool === 'Write') {
+    if (typeof orig !== 'string') return undefined;
+    return typeof result.content === 'string' && result.content.startsWith(orig) ? 'append' : 'replace';
+  }
   const old = result.oldString; const neu = result.newString;
   if (typeof old !== 'string' || typeof neu !== 'string') return undefined;
   if (result.replaceAll) return 'replace';
-  if (old.trim() && neu.startsWith(old) && orig.trimEnd().endsWith(old.trimEnd())) return 'append';
   const edit = { old_string: old, new_string: neu };
+  if (typeof orig !== 'string') return splitsAnchor(old, neu) || neu.includes(old) ? 'insert' : 'replace';
+  if (old.trim() && neu.startsWith(old) && orig.trimEnd().endsWith(old.trimEnd())) return 'append';
   if (isBlockInsertion(result.filePath ?? use.input.file_path, orig, [edit])) return 'insert-block';
   // An insertion may split its anchor (the block lands between the anchor's lines), so the test
   // is whether the edit adds whole lines and leaves every existing line alone, not containment.
   return insertion(orig, edit) || neu.includes(old) ? 'insert' : 'replace';
+}
+
+// True when the new string is the old one with text added between two of its lines: the old
+// string is a prefix plus a suffix of the new one, split at a line break.
+function splitsAnchor(old, neu) {
+  if (neu.length <= old.length) return false;
+  let p = 0;
+  while (p < old.length && old[p] === neu[p]) p++;
+  const cut = old.lastIndexOf('\n', p - 1) + 1;
+  return cut > 0 && neu.endsWith(old.slice(cut));
 }
 
 export function toVector(use, { cwd, lang, touched, month, project, words = [], result }) {
@@ -302,7 +317,7 @@ export function mine(opts = {}) {
   let upgraded = 0;
   const byLang = {};
   const all = [];
-  for (const [lang, fresh] of byLangNew) {
+  for (let [lang, fresh] of byLangNew) {
     const file = path.join(out, `${lang}.jsonl`);
     let existing = fsm.existsSync(file) ? readJsonl(file) : [];
     // A shaped vector supersedes a shapeless row for the same edit (mined before shapes existed),
@@ -312,6 +327,8 @@ export function mine(opts = {}) {
     const keyOf = (v) => `${v.event}|${v.tool}|${v.input.file_path}|${Boolean(v.fixture)}`;
     const freshShapes = new Map();
     for (const v of fresh) if (v.input.shape) { const k = keyOf(v); if (!freshShapes.has(k)) freshShapes.set(k, new Set()); freshShapes.get(k).add(v.input.shape); }
+    // The same edit mined once with its result and once without would land twice; keep the shaped row.
+    fresh = fresh.filter((v) => v.tool === 'Bash' || v.input.shape || !freshShapes.has(keyOf(v)));
     const before = existing.length;
     existing = existing.filter((v) => {
       if (v.tool === 'Bash') return true;

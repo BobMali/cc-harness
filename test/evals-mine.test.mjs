@@ -502,3 +502,32 @@ test('shape: a php method added ahead of the class-closing brace is insert-block
     assert.equal(r.upgraded, 1);   // the replace row mined before split anchors were understood
   } finally { proj.cleanup(); from.cleanup(); out.cleanup(); }
 });
+
+test('shape: an Edit result recorded with originalFile null is still shaped from its two strings, and a shapeless row never sits beside a shaped sibling from the same walk', () => {
+  const proj = makeProject({ files: { 'package.json': '{}' } });
+  const from = makeDataDir(); const out = makeDataDir();
+  try {
+    const dir = path.join(from.dir, '-x-app'); fs.mkdirSync(dir);
+    const fp = path.join(proj.dir, 'src/a.test.ts');
+    let n = 0;
+    const pair = (input, result) => {
+      const id = `toolu_${++n}`;
+      return [
+        JSON.stringify({ type: 'assistant', cwd: proj.dir, timestamp: '2026-09-01T00:00:00Z', message: { content: [{ type: 'tool_use', id, name: 'Edit', input }] } }),
+        result === undefined ? null : JSON.stringify({ type: 'user', cwd: proj.dir, timestamp: '2026-09-01T00:00:01Z', message: { content: [{ type: 'tool_result', tool_use_id: id, content: 'ok' }] }, toolUseResult: result }),
+      ];
+    };
+    const noOrig = (o, nw) => ({ filePath: fp, oldString: o, newString: nw, originalFile: null, replaceAll: false });
+    const lines = [
+      ...pair({ file_path: fp, old_string: 'a', new_string: 'b' }, noOrig('a', 'b')),                       // changed text: replace
+      ...pair({ file_path: fp, old_string: 'a', new_string: 'a\nb' }, noOrig('a', 'a\nb')),                 // contained anchor: insert
+      ...pair({ file_path: fp, old_string: '  }\n}', new_string: '  }\n\n  b\n}' }, noOrig('  }\n}', '  }\n\n  b\n}')),   // split anchor: insert
+      ...pair({ file_path: fp, old_string: 'a', new_string: 'c' }, undefined),                              // no result at all: shapeless, and a shaped sibling exists
+      ...pair({ file_path: path.join(proj.dir, 'src/b.test.ts'), old_string: 'a', new_string: 'c' }, undefined),   // no result and no sibling: stays shapeless
+    ];
+    fs.writeFileSync(path.join(dir, 's.jsonl'), lines.filter(Boolean).join('\n') + '\n');
+    mine({ from: from.dir, out: out.dir, log: () => {} });
+    const rows = readJsonl(path.join(out.dir, 'ts.jsonl')).filter((v) => v.event === 'PreToolUse');
+    assert.deepEqual(rows.map((v) => `${v.input.file_path} ${v.input.shape ?? '-'}`).sort(), ['src/a.test.ts insert', 'src/a.test.ts replace', 'src/b.test.ts -']);
+  } finally { proj.cleanup(); from.cleanup(); out.cleanup(); }
+});
