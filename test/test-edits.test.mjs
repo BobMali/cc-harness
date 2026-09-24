@@ -18,7 +18,7 @@ test('isBlockInsertion: anything that is not whole blocks at a block boundary is
   assert.equal(isBlockInsertion('x.test.ts', JS, [{ old_string: 'test("a", () => {\n  assert.ok(1);\n});', new_string: 'test("a", () => {\n  assert.ok(1);\n});\n\ntest("m", () => {\n  assert.ok(1);' }]), false);   // unbalanced
   assert.equal(isBlockInsertion('x.test.ts', JS, [{ old_string: 'test("a", () => {', new_string: 'test("a", () => {\n\ntest("m", () => {});' }]), false);   // after an unclosed opener: inside the block
   assert.equal(isBlockInsertion('x.test.ts', JS, [{ old_string: '"a"', new_string: '"b"' }]), false);                                              // a change
-  assert.equal(isBlockInsertion('x.test.php', 'class T {}\n', [{ old_string: 'class T {}', new_string: 'class T {}\nfunction testM() {}' }]), false);   // unsupported language
+  assert.equal(isBlockInsertion('x.test.php', 'class T {}\n', [{ old_string: 'class T {}', new_string: 'class T {}\nfunction testM() {}' }]), false);   // a one-line class is no boundary, and a block must sit inside the class
   assert.equal(isBlockInsertion('x_test.go', GO, [{ old_string: '\t}\n}', new_string: '\t}\n}\n\nfunc helper() {}' }]), false);                  // not a test function
 });
 
