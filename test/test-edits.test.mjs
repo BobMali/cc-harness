@@ -44,3 +44,11 @@ test('isBlockInsertion: nested insertions that break the indentation or land ins
   assert.equal(isBlockInsertion('x.test.ts', NESTED, [{ old_string: '    run();', new_string: '    run();\n    it("m", () => {});' }]), false);                                            // inside a test body
   assert.equal(isBlockInsertion('x.test.ts', NESTED, [{ old_string: '  it("a", () => {', new_string: '  it("a", () => {\n    it("m", () => {});' }]), false);                              // after a test opener, not a group opener
 });
+
+test('isBlockInsertion: an anchor that spans the last block and the closing line of its group still admits a whole block between them', () => {
+  // The edit's old_string is neither a prefix nor a suffix of new_string: the block lands between the two anchor lines.
+  assert.equal(isBlockInsertion('x.test.ts', NESTED, [{ old_string: '  it("z", () => {});\n});', new_string: '  it("z", () => {});\n\n  it("m", () => {\n    run();\n  });\n});' }]), true);
+  assert.equal(isBlockInsertion('x_test.go', GO, [{ old_string: 'func TestZ(t *testing.T) {}\n', new_string: 'func TestM(t *testing.T) {}\n\nfunc TestZ(t *testing.T) {}\n' }]), true);   // suffix anchor including its newline
+  assert.equal(isBlockInsertion('x.test.ts', NESTED, [{ old_string: '  it("z", () => {});\n});', new_string: '  it("z", () => {});\n\n  it("m", () => {});\n});\n' }]), false);   // the closing line changes too
+  assert.equal(isBlockInsertion('x.test.ts', NESTED, [{ old_string: '  it("z", () => {});\n});', new_string: '  it("z", () => {}); // note\n\n  it("m", () => {});\n});' }]), false);   // the anchor line itself changes
+});

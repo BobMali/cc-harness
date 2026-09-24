@@ -27,38 +27,45 @@ const LANGS = [
 ];
 
 // True when every Edit/MultiEdit step only adds one or more complete test blocks at a block
-// boundary of a JS/TS or Go test file: the anchor is unique, the added text sits on its own lines,
-// the line before the insertion point is a closed block, a neutral line, the file start, or (JS)
-// a group opener such as `describe(`, the added blocks share that line's indentation (or sit
-// deeper, after a group opener), begin with a test block opener, end with a block close, are
-// brace- and paren-balanced outside strings and comments, and contain no other code at the block
-// level. Writes and other languages are never block insertions.
+// boundary of a JS/TS or Go test file: the anchor is unique, the step adds whole lines at one
+// point and changes no existing line, the line before the insertion point is a closed block, a
+// neutral line, the file start, or (JS) a group opener such as `describe(`, the added blocks
+// share that line's indentation (or sit deeper, after a group opener), begin with a test block
+// opener, end with a block close, are brace- and paren-balanced outside strings and comments, and
+// contain no other code at the block level. Writes and other languages are never block insertions.
 export function isBlockInsertion(filePath, current, edits) {
   const lang = LANGS.find((l) => l.ext.test(String(filePath)));
   if (!lang || !Array.isArray(edits) || !edits.length) return false;
   let text = current;
   for (const e of edits) {
-    if (!validEdit(e) || !e.old_string) return false;
-    const idx = text.indexOf(e.old_string);
-    if (idx === -1 || text.indexOf(e.old_string, idx + 1) !== -1) return false;
-    let added; let at;
-    if (e.new_string.startsWith(e.old_string)) {
-      added = e.new_string.slice(e.old_string.length); at = idx + e.old_string.length;
-      if (!added.startsWith('\n')) return false;
-    } else if (e.new_string.endsWith(e.old_string)) {
-      added = e.new_string.slice(0, -e.old_string.length); at = idx;
-      // the anchor may start after its line's indentation; the added text then ends with "\n" + that indentation
-      const lineStart = text.lastIndexOf('\n', at - 1) + 1;
-      const lead = text.slice(lineStart, at);
-      if (/\S/.test(lead) || !added.endsWith('\n' + lead)) return false;
-      added = added.slice(0, added.length - lead.length);
-      at = lineStart;
-    } else return false;
-    const ctx = boundary(text, at, lang);
-    if (!ctx || !wholeBlocks(added, lang, ctx)) return false;
-    text = text.slice(0, idx) + e.new_string + text.slice(idx + e.old_string.length);
+    const ins = insertion(text, e);
+    if (!ins) return false;
+    const ctx = boundary(text, ins.at, lang);
+    if (!ctx || !wholeBlocks(ins.added, lang, ctx)) return false;
+    text = ins.after;
   }
   return true;
+}
+
+// The whole lines an Edit step adds, if it adds lines at one point and leaves every existing
+// line as it was: `at` is the offset of the first added line in the text before the step, `after`
+// the text once it is applied. The anchor must occur exactly once. Null for any other step: a
+// changed line, a removed line, or text appended to an existing line.
+export function insertion(text, e) {
+  if (!validEdit(e) || !e.old_string) return null;
+  const idx = text.indexOf(e.old_string);
+  if (idx === -1 || text.indexOf(e.old_string, idx + 1) !== -1) return null;
+  const after = text.slice(0, idx) + e.new_string + text.slice(idx + e.old_string.length);
+  const a = text.split('\n');
+  const b = after.split('\n');
+  if (b.length <= a.length) return null;
+  let p = 0;
+  while (p < a.length && a[p] === b[p]) p++;
+  let s = 0;
+  while (s < a.length - p && a[a.length - 1 - s] === b[b.length - 1 - s]) s++;
+  if (p + s < a.length) return null;
+  const at = p === 0 ? 0 : a.slice(0, p).join('\n').length + 1;
+  return { added: b.slice(p, b.length - s).join('\n') + '\n', at, after };
 }
 
 // What the line before the insertion point allows: after a closed block, a neutral line, or the
@@ -118,7 +125,12 @@ function balanced(src) {
 export function addedText(tool, ti, current) {
   if (tool === 'Write') return typeof ti.content === 'string' ? ti.content.slice(current.length) : '';
   const edits = editsOf(tool, ti) ?? [];
-  return edits.map((e) => (validEdit(e) ? (e.new_string.startsWith(e.old_string) ? e.new_string.slice(e.old_string.length) : e.new_string.endsWith(e.old_string) ? e.new_string.slice(0, e.new_string.length - e.old_string.length) : e.new_string) : '')).join('\n');
+  let text = current;
+  return edits.map((e) => {
+    const ins = insertion(text, e);
+    if (ins) { text = ins.after; return ins.added; }
+    return validEdit(e) ? (e.new_string.startsWith(e.old_string) ? e.new_string.slice(e.old_string.length) : e.new_string.endsWith(e.old_string) ? e.new_string.slice(0, e.new_string.length - e.old_string.length) : e.new_string) : '';
+  }).join('\n');
 }
 
 // Markers that change how the tests already in the file run even though nothing existing was
